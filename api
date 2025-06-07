@@ -1,0 +1,675 @@
+# 小神龙仓库管理系统 API 接口文档
+
+**版本**: v1.0.0  
+**基础URL**: `https://jdegylyrnsyf.sealoshzh.site`  
+**开发URL**: `http://localhost:8000`  
+**生产URL**: `https://your-api-domain.com`  
+
+---
+
+## 📋 目录
+
+1. [基础信息](#基础信息)
+2. [认证方式](#认证方式)
+3. [公共响应格式](#公共响应格式)
+4. [错误码说明](#错误码说明)
+5. [接口列表](#接口列表)
+   - [系统接口](#系统接口)
+   - [用户认证接口](#用户认证接口)
+   - [业务接口](#业务接口)
+   - [测试接口](#测试接口)
+
+---
+
+## 🔧 基础信息
+
+### 接口地址
+- **生产环境**: `https://jdegylyrnsyf.sealoshzh.site`
+- **开发环境**: `http://localhost:8000`
+
+### 请求头设置
+```http
+Content-Type: application/json
+Authorization: Bearer {access_token}  # 需要认证的接口
+```
+
+### 字符编码
+`UTF-8`
+
+---
+
+## 🔐 认证方式
+
+系统采用 **JWT Token** 认证方式：
+
+1. 通过登录接口获取 `access_token` 和 `refresh_token`
+2. 在需要认证的接口请求头中添加: `Authorization: Bearer {access_token}`
+3. Token过期时间: 1小时
+4. 刷新Token过期时间: 7天
+
+---
+
+## 📊 公共响应格式
+
+### 成功响应
+```json
+{
+    "success": true,
+    "message": "操作成功",
+    "data": { /* 具体数据 */ },
+    "timestamp": "2025-06-03T16:42:00.000000"
+}
+```
+
+### 错误响应
+```json
+{
+    "success": false,
+    "error": "错误描述",
+    "status": 400,
+    "timestamp": "2025-06-03T16:42:00.000000"
+}
+```
+
+---
+
+## ❌ 错误码说明
+
+| 状态码 | 说明 | 处理方式 |
+|--------|------|----------|
+| 200 | 请求成功 | - |
+| 201 | 创建成功 | - |
+| 400 | 请求参数错误 | 检查请求参数 |
+| 401 | 未授权/Token无效 | 重新登录获取Token |
+| 403 | 权限不足 | 联系管理员 |
+| 404 | 资源不存在 | 检查请求路径 |
+| 500 | 服务器内部错误 | 联系技术支持 |
+
+---
+
+## 📡 接口列表
+
+### 🏠 系统接口
+
+#### 1. 健康检查
+**接口说明**: 检查API服务状态  
+**请求方式**: `GET`  
+**接口地址**: `/`  
+**是否认证**: 否  
+
+**请求示例**:
+```bash
+curl -X GET http://localhost:8000/
+```
+
+**成功响应**:
+```json
+{
+    "status": "ok",
+    "message": "小神龙WMS API服务正常运行",
+    "timestamp": "2025-06-03T16:41:29.829684",
+    "server": "xiaoshenlong-wms",
+    "version": "1.0.0"
+}
+```
+
+---
+
+#### 2. API信息
+**接口说明**: 获取API详细信息和所有可用接口  
+**请求方式**: `GET`  
+**接口地址**: `/api/`  
+**是否认证**: 否  
+
+**请求示例**:
+```bash
+curl -X GET http://localhost:8000/api/
+```
+
+**成功响应**:
+```json
+{
+    "name": "小神龙仓库管理系统 API",
+    "version": "1.0.0",
+    "status": "running",
+    "mongodb_connected": true,
+    "features": {
+        "authentication": "JWT Token",
+        "database": "MongoDB",
+        "cache": "Redis (可选)",
+        "cors": "已配置"
+    },
+    "endpoints": {
+        "auth": {
+            "register": "POST /api/auth/register/",
+            "login": "POST /api/auth/login/",
+            "logout": "POST /api/auth/logout/",
+            "user_info": "GET /api/auth/user/"
+        },
+        "business": {
+            "products": "GET /api/products/",
+            "inventory": "GET /api/inventory/"
+        }
+    }
+}
+```
+
+---
+
+### 👤 用户认证接口
+
+#### 3. 用户注册
+**接口说明**: 新用户注册  
+**请求方式**: `POST`  
+**接口地址**: `/api/auth/register/`  
+**是否认证**: 否  
+
+**请求参数**:
+```json
+{
+    "username": "string",    // 用户名，必填，3-20字符
+    "email": "string",       // 邮箱，必填，有效邮箱格式
+    "password": "string"     // 密码，必填，最少6位
+}
+```
+
+**请求示例**:
+```bash
+curl -X POST http://localhost:8000/api/auth/register/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "123456"
+  }'
+```
+
+**成功响应**:
+```json
+{
+    "message": "注册成功",
+    "user": {
+        "id": "user_1748940112",
+        "username": "testuser",
+        "email": "test@example.com",
+        "created_at": "2025-06-03T16:41:52.389304",
+        "is_active": true,
+        "role": "viewer"
+    },
+    "success": true
+}
+```
+
+**失败响应**:
+```json
+{
+    "error": "用户名、邮箱和密码都不能为空",
+    "success": false
+}
+```
+
+```json
+{
+    "error": "邮箱格式不正确",
+    "success": false
+}
+```
+
+```json
+{
+    "error": "密码长度至少6位",
+    "success": false
+}
+```
+
+---
+
+#### 4. 用户登录
+**接口说明**: 用户登录获取Token  
+**请求方式**: `POST`  
+**接口地址**: `/api/auth/login/`  
+**是否认证**: 否  
+
+**请求参数**:
+```json
+{
+    "username": "string",    // 用户名，必填
+    "password": "string"     // 密码，必填
+}
+```
+
+**请求示例**:
+```bash
+curl -X POST http://localhost:8000/api/auth/login/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "123456"
+  }'
+```
+
+**成功响应**:
+```json
+{
+    "message": "登录成功",
+    "user": {
+        "id": "user_admin",
+        "username": "admin",
+        "email": "admin@example.com",
+        "role": "admin",
+        "permissions": ["view_inventory", "add_product"]
+    },
+    "tokens": {
+        "access": "access_token_admin_1748940122",
+        "refresh": "refresh_token_admin_1748940122",
+        "expires_in": 3600
+    },
+    "success": true
+}
+```
+
+**失败响应**:
+```json
+{
+    "error": "用户名和密码不能为空",
+    "success": false
+}
+```
+
+```json
+{
+    "error": "用户名或密码错误",
+    "success": false
+}
+```
+
+---
+
+#### 5. 用户登出
+**接口说明**: 用户登出，使Token失效  
+**请求方式**: `POST`  
+**接口地址**: `/api/auth/logout/`  
+**是否认证**: 是  
+
+**请求头**:
+```http
+Authorization: Bearer {access_token}
+```
+
+**请求示例**:
+```bash
+curl -X POST http://localhost:8000/api/auth/logout/ \
+  -H "Authorization: Bearer access_token_admin_1748940122"
+```
+
+**成功响应**:
+```json
+{
+    "message": "登出成功",
+    "success": true
+}
+```
+
+**失败响应**:
+```json
+{
+    "error": "无效的认证头",
+    "success": false
+}
+```
+
+---
+
+#### 6. 获取用户信息
+**接口说明**: 获取当前登录用户信息  
+**请求方式**: `GET`  
+**接口地址**: `/api/auth/user/`  
+**是否认证**: 是  
+
+**请求头**:
+```http
+Authorization: Bearer {access_token}
+```
+
+**请求示例**:
+```bash
+curl -X GET http://localhost:8000/api/auth/user/ \
+  -H "Authorization: Bearer access_token_admin_1748940122"
+```
+
+**成功响应**:
+```json
+{
+    "user": {
+        "id": "user_admin",
+        "username": "admin",
+        "email": "admin@example.com",
+        "role": "admin",
+        "permissions": ["view_inventory", "add_product", "edit_product", "delete_product"],
+        "last_login": "2025-06-03T16:42:19.901084"
+    },
+    "success": true
+}
+```
+
+**失败响应**:
+```json
+{
+    "error": "未提供认证令牌",
+    "success": false
+}
+```
+
+---
+
+### 📦 业务接口
+
+#### 7. 获取商品列表
+**接口说明**: 获取商品列表信息  
+**请求方式**: `GET`  
+**接口地址**: `/api/products/`  
+**是否认证**: 否（可选认证）  
+
+**查询参数** (可选):
+```
+page=1          // 页码，默认1
+page_size=20    // 每页数量，默认20
+search=关键词   // 搜索关键词
+category=分类   // 商品分类
+```
+
+**请求示例**:
+```bash
+curl -X GET "http://localhost:8000/api/products/?page=1&page_size=10"
+```
+
+**成功响应**:
+```json
+{
+    "products": [
+        {
+            "id": 1,
+            "name": "笔记本电脑",
+            "sku": "LAP001",
+            "category": "电子产品",
+            "price": 5999.00,
+            "stock": 50,
+            "status": "active"
+        },
+        {
+            "id": 2,
+            "name": "无线鼠标",
+            "sku": "MSE001",
+            "category": "电子配件",
+            "price": 89.00,
+            "stock": 200,
+            "status": "active"
+        }
+    ],
+    "total": 2,
+    "page": 1,
+    "page_size": 20,
+    "success": true
+}
+```
+
+---
+
+#### 8. 获取库存信息
+**接口说明**: 获取商品库存信息  
+**请求方式**: `GET`  
+**接口地址**: `/api/inventory/`  
+**是否认证**: 否（可选认证）  
+
+**查询参数** (可选):
+```
+product_id=1    // 商品ID
+low_stock=true  // 只显示库存不足的商品
+```
+
+**请求示例**:
+```bash
+curl -X GET "http://localhost:8000/api/inventory/?product_id=1"
+```
+
+**成功响应**:
+```json
+{
+    "inventory": [
+        {
+            "product_id": 1,
+            "product_name": "笔记本电脑",
+            "current_stock": 50,
+            "reserved_stock": 5,
+            "available_stock": 45,
+            "last_updated": "2025-06-03T16:42:41.135202"
+        },
+        {
+            "product_id": 2,
+            "product_name": "无线鼠标",
+            "current_stock": 200,
+            "reserved_stock": 10,
+            "available_stock": 190,
+            "last_updated": "2025-06-03T16:42:41.135216"
+        }
+    ],
+    "total": 2,
+    "success": true
+}
+```
+
+---
+
+### 🧪 测试接口
+
+#### 9. 受保护接口测试
+**接口说明**: 测试Token认证功能  
+**请求方式**: `GET`  
+**接口地址**: `/api/test/protected/`  
+**是否认证**: 是  
+
+**请求头**:
+```http
+Authorization: Bearer {access_token}
+```
+
+**请求示例**:
+```bash
+curl -X GET http://localhost:8000/api/test/protected/ \
+  -H "Authorization: Bearer access_token_admin_1748940122"
+```
+
+**成功响应**:
+```json
+{
+    "message": "认证成功！这是受保护的API接口",
+    "user_token": "access_token_admin_1...",
+    "timestamp": "2025-06-03T16:42:19.901084",
+    "protected": true
+}
+```
+
+**失败响应**:
+```json
+{
+    "error": "需要认证才能访问此接口"
+}
+```
+
+---
+
+#### 10. GET请求测试
+**接口说明**: 测试GET请求和参数传递  
+**请求方式**: `GET`  
+**接口地址**: `/api/test/get/`  
+**是否认证**: 否  
+
+**请求示例**:
+```bash
+curl -X GET "http://localhost:8000/api/test/get/?test=value&frontend=true"
+```
+
+**成功响应**:
+```json
+{
+    "method": "GET",
+    "success": true
+}
+```
+
+---
+
+#### 11. POST请求测试
+**接口说明**: 测试POST请求和数据传递  
+**请求方式**: `POST`  
+**接口地址**: `/api/test/post/`  
+**是否认证**: 否  
+
+**请求示例**:
+```bash
+curl -X POST http://localhost:8000/api/test/post/ \
+  -H "Content-Type: application/json" \
+  -d '{"test": "data"}'
+```
+
+**成功响应**:
+```json
+{
+    "method": "POST",
+    "success": true
+}
+```
+
+---
+
+## 🔧 Vue.js 前端集成示例
+
+### 1. 安装和配置
+
+在你的Vue项目中：
+
+```javascript
+// 1. 复制 vue_api_utils.js 到你的项目
+// 2. 在 main.js 中引入
+import { WmsApiPlugin } from './utils/vue_api_utils.js'
+
+app.use(WmsApiPlugin)
+```
+
+### 2. 环境配置
+
+创建 `.env.development` 文件：
+```env
+VUE_APP_API_BASE_URL=http://localhost:8000
+VUE_APP_API_VERSION=v1
+VUE_APP_TOKEN_KEY=wms_token
+```
+
+创建 `.env.production` 文件：
+```env
+VUE_APP_API_BASE_URL=https://your-api-domain.com
+VUE_APP_API_VERSION=v1
+VUE_APP_TOKEN_KEY=wms_token
+```
+
+### 3. 使用示例
+
+#### 登录功能
+```vue
+<template>
+  <form @submit.prevent="handleLogin">
+    <input v-model="form.username" placeholder="用户名" required>
+    <input v-model="form.password" type="password" placeholder="密码" required>
+    <button type="submit" :disabled="loading">
+      {{ loading ? '登录中...' : '登录' }}
+    </button>
+  </form>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      form: {
+        username: '',
+        password: ''
+      },
+      loading: false
+    }
+  },
+  methods: {
+    async handleLogin() {
+      this.loading = true
+      try {
+        const result = await this.$api.login(this.form)
+        if (result.success) {
+          this.$router.push('/dashboard')
+          this.$message.success('登录成功')
+        } else {
+          this.$message.error(result.error)
+        }
+      } catch (error) {
+        this.$message.error('登录失败')
+      } finally {
+        this.loading = false
+      }
+    }
+  }
+}
+</script>
+```
+
+#### 获取商品列表
+```vue
+<script>
+export default {
+  data() {
+    return {
+      products: [],
+      loading: false
+    }
+  },
+  async mounted() {
+    await this.fetchProducts()
+  },
+  methods: {
+    async fetchProducts() {
+      this.loading = true
+      try {
+        const result = await this.$api.getProducts()
+        if (result.success) {
+          this.products = result.data.products
+        }
+      } catch (error) {
+        console.error('获取商品失败:', error)
+      } finally {
+        this.loading = false
+      }
+    }
+  }
+}
+</script>
+```
+
+---
+
+## 📞 技术支持
+
+- **文档版本**: v1.0.0
+- **最后更新**: 2025-06-03
+- **支持邮箱**: tech@xiaoshenlong.com
+- **技术QQ群**: 123456789
+
+---
+
+## 🚨 注意事项
+
+1. **Token安全**: 请妥善保管Token，不要在URL中传递
+2. **HTTPS**: 生产环境必须使用HTTPS
+3. **跨域**: 确保后端CORS配置包含你的前端域名
+4. **错误处理**: 建议统一处理401错误，自动跳转登录页
+5. **请求频率**: 避免过于频繁的API请求
+
+---
+
+*本文档持续更新中，如有疑问请联系技术支持团队。* 
