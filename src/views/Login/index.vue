@@ -60,7 +60,7 @@
               type="primary"
               plain
             >
-              🔐 管理员: admin / 123456
+              🔐 管理员: admin / admin123
             </el-button>
             <el-button 
               size="small" 
@@ -136,86 +136,16 @@ const fillDemoAccount = (type) => {
   if (account) {
     loginForm.username = account.username
     loginForm.password = account.password
-    ElMessage.info(`已填充${account.user.first_name}账户信息`)
+    ElMessage.info(`已填充${account.name}账户信息`)
   }
 }
 
-// 本地演示账户
+// 演示账户信息（用于按钮填充）
 const demoAccounts = {
-  'admin': {
-    username: 'admin',
-    password: '123456',
-    user: {
-      id: 1,
-      username: 'admin',
-      email: 'admin@example.com',
-      first_name: '系统管理员',
-      role: 'admin',
-      permissions: ['all']
-    }
-  },
-  'testuser': {
-    username: 'testuser', 
-    password: '123456',
-    user: {
-      id: 2,
-      username: 'testuser',
-      email: 'test@example.com',
-      first_name: '测试用户',
-      role: 'user',
-      permissions: ['read']
-    }
-  },
-  'manager': {
-    username: 'manager',
-    password: 'manager123',
-    user: {
-      id: 3,
-      username: 'manager',
-      email: 'manager@example.com', 
-      first_name: '仓库经理',
-      role: 'manager',
-      permissions: ['warehouse', 'inventory']
-    }
-  },
-  'operator': {
-    username: 'operator',
-    password: 'operator123',
-    user: {
-      id: 4,
-      username: 'operator',
-      email: 'operator@example.com',
-      first_name: '操作员',
-      role: 'operator', 
-      permissions: ['basic']
-    }
-  }
-}
-
-// 本地登录验证
-const localLogin = (username, password) => {
-  const account = demoAccounts[username]
-  if (account && account.password === password) {
-    // 模拟登录成功，保存用户信息
-    const mockTokens = {
-      access: 'mock_access_token_' + Date.now(),
-      refresh: 'mock_refresh_token_' + Date.now()
-    }
-    
-    // 保存到localStorage
-    localStorage.setItem('wms_access_token', mockTokens.access)
-    localStorage.setItem('wms_refresh_token', mockTokens.refresh)
-    localStorage.setItem('wms_user_info', JSON.stringify(account.user))
-    
-    return {
-      success: true,
-      tokens: mockTokens,
-      user: account.user,
-      message: '本地演示登录成功'
-    }
-  }
-  
-  throw new Error('用户名或密码错误')
+  'admin': { username: 'admin', password: 'admin123', name: '系统管理员' },
+  'manager': { username: 'manager', password: 'manager123', name: '仓库管理员' },
+  'operator': { username: 'operator', password: 'operator123', name: '操作员' },
+  'testuser': { username: 'testuser', password: '123456', name: '测试用户' }
 }
 
 // 处理登录
@@ -226,41 +156,23 @@ const handleLogin = async () => {
     if (valid) {
       loading.value = true
       try {
-        let response = null
+        // 直接使用userStore的login方法，它已经包含了API和演示模式的降级逻辑
+        console.log('🔄 正在登录...')
+        const result = await userStore.login({
+          username: loginForm.username,
+          password: loginForm.password
+        })
         
-        try {
-          // 首先尝试真实API登录
-          console.log('🔄 尝试API登录...')
-          response = await api.login({
-            username: loginForm.username,
-            password: loginForm.password
-          })
-          console.log('✅ API登录成功:', response)
-          ElMessage.success('登录成功')
-        } catch (apiError) {
-          // API失败，降级到本地登录
-          console.warn('⚠️ API登录失败，使用本地演示登录:', apiError.message)
+        if (result && result.success) {
+          console.log('✅ 登录成功')
           
-          try {
-            response = localLogin(loginForm.username, loginForm.password)
-            console.log('✅ 本地登录成功:', response)
-            ElMessage.success('演示模式登录成功')
-          } catch (localError) {
-            throw new Error('登录失败：' + localError.message)
+          // 检测设备类型，移动设备跳转到移动端
+          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+          if (isMobile) {
+            router.push('/mobile/dashboard')
+          } else {
+            router.push('/')
           }
-        }
-        
-        // 更新用户store
-        if (response && response.user) {
-          userStore.setUser(response.user)
-        }
-        
-        // 检测设备类型，移动设备跳转到移动端
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-        if (isMobile) {
-          router.push('/mobile/dashboard')
-        } else {
-          router.push('/')
         }
         
       } catch (error) {

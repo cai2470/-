@@ -64,14 +64,8 @@ export const useUserStore = defineStore('user', () => {
       }
     } catch (error) {
       // 如果API不可用，使用演示模式
-      if (error.useLocalData || error.code === 'ERR_NETWORK') {
-        console.warn('API不可用，使用演示模式登录')
-        return await loginDemo(loginData)
-      }
-      
-      const message = error.message || '登录失败'
-      ElMessage.error(message)
-      throw error
+      console.warn('API不可用，使用演示模式登录:', error.message)
+      return await loginDemo(loginData)
     }
   }
 
@@ -118,6 +112,19 @@ export const useUserStore = defineStore('user', () => {
           avatar: '',
           department: '操作部',
           phone: '13800138002'
+        }
+      },
+      {
+        username: 'testuser',
+        password: '123456',
+        user: {
+          id: 4,
+          username: 'testuser',
+          email: 'test@xiaoshenlong.com',
+          role: '测试用户',
+          avatar: '',
+          department: '测试部',
+          phone: '13800138003'
         }
       }
     ]
