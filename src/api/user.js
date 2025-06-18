@@ -1,4 +1,4 @@
-import { http } from './request'
+import { api as http } from './request'
 
 export const userApi = {
   // 登录

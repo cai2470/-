@@ -342,5 +342,5 @@ html, body {
   }
 }
 
-// 引入移动端样式
+// 引入移动端样式（回退到@import以避免语法错误）
 @import './mobile.scss';

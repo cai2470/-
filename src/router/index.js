@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/stores/user'
 
 // 配置NProgress
 import NProgress from 'nprogress'
@@ -269,13 +268,27 @@ router.beforeEach(async (to, from, next) => {
     document.title = `${to.meta.title} - 小神龙仓库管理系统`
   }
   
-  // 不需要认证的页面
+  // 不需要认证的页面（如登录页）
   if (to.meta.requireAuth === false) {
+    // 如果已登录用户访问登录页，重定向到首页
+    const token = localStorage.getItem('access_token')
+    if (token && to.path === '/login') {
+      next('/dashboard')
+      return
+    }
     next()
     return
   }
   
-  // 需要认证的页面 - 暂时跳过认证，直接允许访问
+  // 需要认证的页面
+  const token = localStorage.getItem('access_token')
+  if (!token) {
+    // 未登录，重定向到登录页
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
+  }
+  
+  // 已登录，允许访问
   next()
 })
 

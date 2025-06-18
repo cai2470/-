@@ -10,7 +10,7 @@ import router from '@/router'
 
 // API 基础配置
 const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://jdegylyrnsyf.sealoshzh.site',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -317,11 +317,9 @@ class WmsAPI {
       console.log('🔄 测试API连接...')
       const response = await this.healthCheck()
       console.log('✅ API连接正常:', response)
-      ElMessage.success('API连接正常')
       return true
     } catch (error) {
-      console.error('❌ API连接失败:', error)
-      ElMessage.error('API连接失败，请检查网络或服务器状态')
+      console.warn('⚠️ API服务器不可用，将使用演示模式:', error.message)
       return false
     }
   }

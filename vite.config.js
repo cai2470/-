@@ -19,6 +19,13 @@ export default defineConfig({
       dts: true
     })
   ],
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler' // 使用现代编译器API
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src')
