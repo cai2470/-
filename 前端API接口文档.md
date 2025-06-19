@@ -32,7 +32,7 @@
 ```json
 {
   "username": "admin",
-  "password": "123456"
+  "password": "admin123"
 }
 ```
 - **响应格式**:
@@ -54,6 +54,20 @@
   }
 }
 ```
+
+### 💡 登录账户说明
+**演示账户（前端模拟）**:
+- 管理员: admin / admin123
+- 仓库经理: manager / manager123  
+- 操作员: operator / operator123
+- 测试用户: testuser / 123456
+
+**⚠️ 重要提示**: 
+1. 以上账户当前仅存在于前端演示数据中，用于离线体验
+2. **后端开发时，这些用户账户必须存储在数据库中**
+3. 密码需要经过哈希加密存储（推荐使用bcrypt、Django内置加密等）
+4. 生产环境必须修改默认密码，确保安全性
+5. 建议实现密码强度检查、登录失败锁定等安全策略
 
 ### 登出接口
 - **路径**: `POST /users/logout/` 或 `POST /api/auth/logout/`
@@ -1740,6 +1754,33 @@
 4. **库存相关表**: inventory_stock, inventory_movements, inventory_alerts
 5. **业务单据表**: inbound_orders, outbound_orders, transfer_orders
 6. **系统管理表**: system_logs, operation_logs, notifications
+
+### 用户表设计建议 (users)
+```sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(150) UNIQUE NOT NULL,
+    email VARCHAR(254) UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,  -- 加密存储
+    first_name VARCHAR(150),
+    last_name VARCHAR(150),
+    role VARCHAR(50) DEFAULT 'staff',     -- admin, manager, operator, staff
+    is_active BOOLEAN DEFAULT TRUE,
+    is_staff BOOLEAN DEFAULT FALSE,
+    is_superuser BOOLEAN DEFAULT FALSE,
+    last_login TIMESTAMP,
+    date_joined TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 初始化演示用户数据（密码需要哈希加密）
+INSERT INTO users (username, email, password_hash, first_name, role, is_active, is_staff) VALUES
+('admin', 'admin@example.com', '$2b$12$...', '系统管理员', 'admin', true, true),
+('manager', 'manager@example.com', '$2b$12$...', '仓库经理', 'manager', true, false),
+('operator', 'operator@example.com', '$2b$12$...', '操作员', 'operator', true, false),
+('testuser', 'test@example.com', '$2b$12$...', '测试用户', 'staff', true, false);
+```
 
 ### 核心功能实现
 1. **JWT认证**: 使用djangorestframework-simplejwt
