@@ -329,6 +329,57 @@ const priorityOptions = ref([
 // 加载基础数据
 const loadBasicData = async () => {
   try {
+    // 加载拣货人员
+    const staffResponse = await wmsAPI.getStaff({ 
+      status: 'active',
+      position: ['picker', 'warehouse_manager']
+    })
+    
+    const staffData = Array.isArray(staffResponse) ? staffResponse : (staffResponse.results || [])
+    staffList.value = staffData
+      .filter(staff => 
+        staff.status === 'active' && 
+        (staff.position === 'picker' || 
+         staff.position === 'warehouse_manager' ||
+         (staff.roles && staff.roles.includes('operator')))
+      )
+      .map(staff => ({
+        id: staff.id,
+        name: staff.name,
+        staff_no: staff.staff_no,
+        department: staff.department,
+        position: staff.position,
+        phone: staff.phone
+      }))
+    
+    console.log('加载拣货人员:', staffList.value.length, '人')
+    
+    // 加载仓库列表
+    const warehouseResponse = await wmsAPI.getWarehouses({ status: 'active' })
+    const warehouseData = Array.isArray(warehouseResponse) ? warehouseResponse : (warehouseResponse.results || [])
+    warehouses.value = warehouseData.filter(w => {
+      const status = w.status
+      return status === '启用' || status === 1 || status === 'active' || status === '正常'
+    }).map(w => ({
+      id: w.id,
+      name: w.name,
+      code: w.code
+    }))
+    
+  } catch (error) {
+    console.error('加载基础数据失败:', error)
+    ElMessage.error('加载基础数据失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadBasicDataFromLocalStorage()
+    }
+  }
+}
+
+// localStorage降级处理方法
+const loadBasicDataFromLocalStorage = () => {
+  try {
     // 从员工管理系统加载拣货人员
     const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
     staffList.value = staffData
@@ -347,7 +398,7 @@ const loadBasicData = async () => {
         phone: staff.phone
       }))
     
-    console.log('加载拣货人员:', staffList.value.length, '人')
+    console.log('从localStorage加载拣货人员:', staffList.value.length, '人')
     
     // 加载仓库列表
     const warehouseData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
@@ -359,10 +410,8 @@ const loadBasicData = async () => {
       name: w.name,
       code: w.code
     }))
-    
   } catch (error) {
-    console.error('加载基础数据失败:', error)
-    ElMessage.error('加载基础数据失败')
+    console.error('从localStorage加载基础数据失败:', error)
   }
 }
 
@@ -370,9 +419,49 @@ const loadBasicData = async () => {
 const loadTableData = async () => {
   loading.value = true
   try {
+    const params = {
+      status: 'pre_delivery',
+      page: pagination.page,
+      page_size: pagination.size,
+      ...filterForm
+    }
+    
+    const response = await wmsAPI.getOutboundOrders(params)
+    const orders = Array.isArray(response) ? response : (response.results || [])
+    
+    // 补充仓库名称
+    const preDeliveryOrders = orders.map(order => {
+      const warehouse = warehouses.value.find(w => w.id === order.warehouse_id)
+      return {
+        ...order,
+        warehouse_name: warehouse ? warehouse.name : '未知仓库',
+        total_quantity: order.products ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0) : 0,
+        total_amount: order.products ? order.products.reduce((sum, p) => sum + (p.amount || 0), 0) : 0
+      }
+    })
+    
+    tableData.value = preDeliveryOrders
+    pagination.total = response.count || preDeliveryOrders.length
+    
+  } catch (error) {
+    console.error('加载预发货列表失败:', error)
+    ElMessage.error('加载预发货列表失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadTableDataFromLocalStorage()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// localStorage降级处理方法
+const loadTableDataFromLocalStorage = () => {
+  try {
     // 从localStorage获取出库单数据
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
-    console.log('PreDelivery - 所有出库单数据:', orders)
+    console.log('PreDelivery - 从localStorage获取出库单数据:', orders)
     
     // 筛选预发货状态的订单
     let preDeliveryOrders = orders.filter(order => order.status === 'pre_delivery')
@@ -410,10 +499,9 @@ const loadTableData = async () => {
     tableData.value = preDeliveryOrders
     pagination.total = preDeliveryOrders.length
     
+    console.log('从localStorage加载预发货列表成功')
   } catch (error) {
-    ElMessage.error('加载预发货列表失败')
-  } finally {
-    loading.value = false
+    console.error('从localStorage加载预发货列表失败:', error)
   }
 }
 
@@ -474,6 +562,29 @@ const batchStartPicking = async () => {
       }
     )
     
+    // 批量开始拣货
+    const orderIds = selectedRows.value.map(order => order.id)
+    await wmsAPI.batchStartPicking(orderIds)
+    
+    ElMessage.success(`已批量开始拣货 ${selectedRows.value.length} 个出库单`)
+    loadTableData()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('批量开始拣货失败:', error)
+      ElMessage.error('批量开始拣货失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        batchStartPickingInLocalStorage()
+      }
+    }
+  }
+}
+
+// localStorage降级批量开始拣货方法
+const batchStartPickingInLocalStorage = () => {
+  try {
     // 批量更新状态为拣货中
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     selectedRows.value.forEach(selectedOrder => {
@@ -489,11 +600,11 @@ const batchStartPicking = async () => {
     })
     
     localStorage.setItem('outbound_orders', JSON.stringify(orders))
-    ElMessage.success(`已批量开始拣货 ${selectedRows.value.length} 个出库单`)
+    ElMessage.success(`已批量开始拣货 ${selectedRows.value.length} 个出库单 (本地数据)`)
     loadTableData()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('localStorage批量开始拣货失败:', error)
   }
 }
 

@@ -317,9 +317,56 @@ const logisticsCompanies = ref([
 const loadTableData = async () => {
   loading.value = true
   try {
+    const params = {
+      status: 'shipping',
+      page: pagination.page,
+      page_size: pagination.size,
+      ...filterForm
+    }
+    
+    const response = await wmsAPI.getOutboundOrders(params)
+    const orders = Array.isArray(response) ? response : (response.results || [])
+    
+    // 处理数据
+    const shippingOrders = orders.map(order => {
+      const totalQuantity = order.products ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0) : 0
+      
+      // 获取物流公司名称
+      const logisticsCompanyName = order.logistics_company ? 
+        (() => {
+          const company = logisticsCompanies.value.find(c => c.value === order.logistics_company)
+          return company ? company.label : order.logistics_company
+        })() : '未选择'
+      
+      return {
+        ...order,
+        total_quantity: totalQuantity,
+        logistics_company: logisticsCompanyName
+      }
+    })
+    
+    tableData.value = shippingOrders
+    pagination.total = response.count || shippingOrders.length
+    
+  } catch (error) {
+    console.error('加载待发货列表失败:', error)
+    ElMessage.error('加载待发货列表失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadTableDataFromLocalStorage()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// localStorage降级处理方法
+const loadTableDataFromLocalStorage = () => {
+  try {
     // 从localStorage获取出库单数据
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
-    console.log('ShippingGoods - 所有出库单数据:', orders)
+    console.log('ShippingGoods - 从localStorage获取出库单数据:', orders)
     
     // 筛选待发货状态的订单
     let shippingOrders = orders.filter(order => order.status === 'shipping')
@@ -374,10 +421,9 @@ const loadTableData = async () => {
     tableData.value = shippingOrders
     pagination.total = shippingOrders.length
     
+    console.log('从localStorage加载待发货列表成功')
   } catch (error) {
-    ElMessage.error('加载待发货列表失败')
-  } finally {
-    loading.value = false
+    console.error('从localStorage加载待发货列表失败:', error)
   }
 }
 
@@ -445,6 +491,28 @@ const completeShipping = async (order) => {
       }
     )
     
+    // 确认发货
+    await wmsAPI.confirmShipping(order.id)
+    
+    ElMessage.success(`出库单 ${order.order_no} 发货已确认，库存已更新`)
+    loadTableData()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('确认发货失败:', error)
+      ElMessage.error('确认发货失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        completeShippingInLocalStorage(order)
+      }
+    }
+  }
+}
+
+// localStorage降级确认发货方法
+const completeShippingInLocalStorage = (order) => {
+  try {
     // 更新订单状态为已完成，并减少库存
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     const index = orders.findIndex(o => o.id === order.id)
@@ -461,11 +529,11 @@ const completeShipping = async (order) => {
     }
     
     localStorage.setItem('outbound_orders', JSON.stringify(orders))
-    ElMessage.success(`出库单 ${order.order_no} 发货已确认，库存已更新`)
+    ElMessage.success(`出库单 ${order.order_no} 发货已确认，库存已更新 (本地数据)`)
     loadTableData()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('localStorage确认发货失败:', error)
   }
 }
 
@@ -492,6 +560,29 @@ const batchCompleteShipping = async () => {
       }
     )
     
+    // 批量确认发货
+    const orderIds = selectedRows.value.map(order => order.id)
+    await wmsAPI.batchConfirmShipping(orderIds)
+    
+    ElMessage.success(`已批量确认 ${selectedRows.value.length} 个出库单发货`)
+    loadTableData()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('批量确认发货失败:', error)
+      ElMessage.error('批量确认发货失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        batchCompleteShippingInLocalStorage()
+      }
+    }
+  }
+}
+
+// localStorage降级批量确认发货方法
+const batchCompleteShippingInLocalStorage = () => {
+  try {
     // 批量更新状态为已完成
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     selectedRows.value.forEach(selectedOrder => {
@@ -510,11 +601,11 @@ const batchCompleteShipping = async () => {
     })
     
     localStorage.setItem('outbound_orders', JSON.stringify(orders))
-    ElMessage.success(`已批量确认 ${selectedRows.value.length} 个出库单发货`)
+    ElMessage.success(`已批量确认 ${selectedRows.value.length} 个出库单发货 (本地数据)`)
     loadTableData()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('localStorage批量确认发货失败:', error)
   }
 }
 

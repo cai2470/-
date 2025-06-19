@@ -225,9 +225,24 @@ const orderStats = reactive({
 // 加载统计数据
 const loadStats = async () => {
   try {
-    // 从localStorage获取出库单数据
+    const stats = await wmsAPI.getOutboundStats()
+    Object.assign(orderStats, stats)
+    console.log('出库订单统计:', stats)
+    console.log('更新后的orderStats:', orderStats)
+  } catch (error) {
+    console.error('加载出库统计数据失败:', error)
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadStatsFromLocalStorage()
+    }
+  }
+}
+
+// localStorage降级处理方法
+const loadStatsFromLocalStorage = () => {
+  try {
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
-    console.log('Orders - 所有出库单数据:', orders)
+    console.log('Orders - 从localStorage获取出库单数据:', orders)
     
     // 统计各状态的订单数量
     const stats = {
@@ -250,10 +265,9 @@ const loadStats = async () => {
     // 更新统计数据
     Object.assign(orderStats, stats)
     
-    console.log('出库订单统计:', stats)
-    console.log('更新后的orderStats:', orderStats)
+    console.log('出库订单统计 (localStorage):', stats)
   } catch (error) {
-    console.error('加载出库统计数据失败:', error)
+    console.error('从localStorage加载统计数据失败:', error)
   }
 }
 
@@ -306,7 +320,34 @@ const refreshData = () => {
 }
 
 // 导出数据
-const exportData = () => {
+const exportData = async () => {
+  try {
+    const blob = await wmsAPI.exportData({ type: 'outbound_orders' })
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `出库单记录_${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('数据导出成功')
+  } catch (error) {
+    console.error('数据导出失败:', error)
+    ElMessage.error('数据导出失败')
+    
+    // API降级处理 - 使用localStorage数据导出CSV
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      exportFromLocalStorage()
+    }
+  }
+}
+
+// localStorage降级导出方法
+const exportFromLocalStorage = () => {
   try {
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     
@@ -341,7 +382,7 @@ const exportData = () => {
     link.click()
     document.body.removeChild(link)
     
-    ElMessage.success('数据导出成功')
+    ElMessage.success('数据导出成功 (本地数据)')
   } catch (error) {
     ElMessage.error('数据导出失败')
     console.error('导出失败:', error)

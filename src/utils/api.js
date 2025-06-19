@@ -753,11 +753,170 @@ class WmsAPI {
   }
   
   /**
+   * 更新出库单
+   * PUT /api/outbound/orders/{id}/
+   */
+  async updateOutboundOrder(id, orderData) {
+    return await apiClient.put(`/api/outbound/orders/${id}/`, orderData)
+  }
+  
+  /**
+   * 删除出库单
+   * DELETE /api/outbound/orders/{id}/
+   */
+  async deleteOutboundOrder(id) {
+    return await apiClient.delete(`/api/outbound/orders/${id}/`)
+  }
+  
+  /**
    * 确认出库
    * POST /api/outbound/orders/{id}/confirm/
    */
   async confirmOutbound(id) {
     return await apiClient.post(`/api/outbound/orders/${id}/confirm/`)
+  }
+  
+  /**
+   * 确认出库单 (别名)
+   */
+  async confirmOutboundOrder(id) {
+    return await this.confirmOutbound(id)
+  }
+  
+  /**
+   * 获取出库统计
+   * GET /api/outbound/orders/stats/
+   */
+  async getOutboundStats() {
+    return await apiClient.get('/api/outbound/orders/stats/')
+  }
+  
+  /**
+   * 批量开始拣货
+   * POST /api/outbound/picking/batch_start/
+   */
+  async batchStartPicking(orderIds) {
+    return await apiClient.post('/api/outbound/picking/batch_start/', {
+      order_ids: orderIds
+    })
+  }
+  
+  /**
+   * 批量完成拣货
+   * POST /api/outbound/picking/batch_complete/
+   */
+  async batchCompletePicking(orderIds) {
+    return await apiClient.post('/api/outbound/picking/batch_complete/', {
+      order_ids: orderIds
+    })
+  }
+  
+  /**
+   * 批量完成打包
+   * POST /api/outbound/packing/batch_complete/
+   */
+  async batchCompletePacking(orderIds) {
+    return await apiClient.post('/api/outbound/packing/batch_complete/', {
+      order_ids: orderIds
+    })
+  }
+  
+  /**
+   * 批量确认发货
+   * POST /api/outbound/shipping/batch_confirm/
+   */
+  async batchConfirmShipping(orderIds) {
+    return await apiClient.post('/api/outbound/shipping/batch_confirm/', {
+      order_ids: orderIds
+    })
+  }
+  
+  /**
+   * 开始拣货
+   * POST /api/outbound/picking/{id}/start/
+   */
+  async startPicking(id, pickerData) {
+    return await apiClient.post(`/api/outbound/picking/${id}/start/`, pickerData)
+  }
+  
+  /**
+   * 扫码确认拣货
+   * POST /api/outbound/picking/{id}/scan/
+   */
+  async scanPickingItem(id, scanData) {
+    return await apiClient.post(`/api/outbound/picking/${id}/scan/`, scanData)
+  }
+  
+  /**
+   * 完成拣货
+   * POST /api/outbound/picking/{id}/complete/
+   */
+  async completePicking(id) {
+    return await apiClient.post(`/api/outbound/picking/${id}/complete/`)
+  }
+  
+  /**
+   * 开始打包
+   * POST /api/outbound/packing/{id}/start/
+   */
+  async startPacking(id, packerData) {
+    return await apiClient.post(`/api/outbound/packing/${id}/start/`, packerData)
+  }
+  
+  /**
+   * 完成打包
+   * POST /api/outbound/packing/{id}/complete/
+   */
+  async completePacking(id, packingData) {
+    return await apiClient.post(`/api/outbound/packing/${id}/complete/`, packingData)
+  }
+  
+  /**
+   * 开始发货
+   * POST /api/outbound/shipping/{id}/start/
+   */
+  async startShipping(id, shippingData) {
+    return await apiClient.post(`/api/outbound/shipping/${id}/start/`, shippingData)
+  }
+  
+  /**
+   * 确认发货
+   * POST /api/outbound/shipping/{id}/confirm/
+   */
+  async confirmShipping(id) {
+    return await apiClient.post(`/api/outbound/shipping/${id}/confirm/`)
+  }
+  
+  /**
+   * 获取销售出库单列表
+   * GET /api/outbound/sales/
+   */
+  async getSalesOutbound(params = {}) {
+    return await apiClient.get('/api/outbound/sales/', { params })
+  }
+  
+  /**
+   * 创建销售出库单
+   * POST /api/outbound/sales/
+   */
+  async createSalesOutbound(salesData) {
+    return await apiClient.post('/api/outbound/sales/', salesData)
+  }
+  
+  /**
+   * 获取调拨出库单列表
+   * GET /api/outbound/transfers/
+   */
+  async getTransferOutbound(params = {}) {
+    return await apiClient.get('/api/outbound/transfers/', { params })
+  }
+  
+  /**
+   * 创建调拨出库单
+   * POST /api/outbound/transfers/
+   */
+  async createTransferOutbound(transferData) {
+    return await apiClient.post('/api/outbound/transfers/', transferData)
   }
   
   // ==================== 报表分析接口 ====================
@@ -794,6 +953,69 @@ class WmsAPI {
     return await apiClient.get('/api/reports/inventory/', { params })
   }
   
+  // ==================== 质检管理接口 ====================
+  
+  /**
+   * 获取质检列表
+   * GET /api/quality/inspections/
+   */
+  async getInspections(params = {}) {
+    return await apiClient.get('/api/quality/inspections/', { params })
+  }
+  
+  /**
+   * 开始质检
+   * POST /api/quality/inspections/{id}/start/
+   */
+  async startInspection(id, inspectorData) {
+    return await apiClient.post(`/api/quality/inspections/${id}/start/`, inspectorData)
+  }
+  
+  /**
+   * 完成质检
+   * POST /api/quality/inspections/{id}/complete/
+   */
+  async completeInspection(id, inspectionData) {
+    return await apiClient.post(`/api/quality/inspections/${id}/complete/`, inspectionData)
+  }
+  
+  /**
+   * 批量质检
+   * POST /api/quality/inspections/batch_inspect/
+   */
+  async batchInspect(inspectionIds, inspectionData) {
+    return await apiClient.post('/api/quality/inspections/batch_inspect/', {
+      inspection_ids: inspectionIds,
+      ...inspectionData
+    })
+  }
+  
+  /**
+   * 获取质检统计
+   * GET /api/quality/inspections/stats/
+   */
+  async getInspectionStats() {
+    return await apiClient.get('/api/quality/inspections/stats/')
+  }
+  
+  /**
+   * 获取质检报告
+   * GET /api/quality/inspections/{id}/report/
+   */
+  async getInspectionReport(id) {
+    return await apiClient.get(`/api/quality/inspections/${id}/report/`)
+  }
+  
+  /**
+   * 打印质检报告
+   * GET /api/quality/inspections/{id}/print/
+   */
+  async printInspectionReport(id) {
+    return await apiClient.get(`/api/quality/inspections/${id}/print/`, {
+      responseType: 'blob'
+    })
+  }
+  
   // ==================== 系统管理接口 ====================
   
   /**
@@ -813,11 +1035,90 @@ class WmsAPI {
   }
   
   /**
+   * 获取登录日志
+   * GET /api/system/login_logs/
+   */
+  async getLoginLogs(params = {}) {
+    return await apiClient.get('/api/system/login_logs/', { params })
+  }
+  
+  /**
    * 获取系统状态
    * GET /api/system/monitor/status/
    */
   async getSystemStatus() {
     return await apiClient.get('/api/system/monitor/status/')
+  }
+  
+  /**
+   * 获取性能指标
+   * GET /api/system/monitor/metrics/
+   */
+  async getPerformanceMetrics() {
+    return await apiClient.get('/api/system/monitor/metrics/')
+  }
+  
+  /**
+   * 备份数据库
+   * POST /api/system/backup/
+   */
+  async createBackup(backupData) {
+    return await apiClient.post('/api/system/backup/', backupData)
+  }
+  
+  /**
+   * 获取备份列表
+   * GET /api/system/backup/
+   */
+  async getBackupList(params = {}) {
+    return await apiClient.get('/api/system/backup/', { params })
+  }
+  
+  /**
+   * 恢复备份
+   * POST /api/system/backup/{id}/restore/
+   */
+  async restoreBackup(id) {
+    return await apiClient.post(`/api/system/backup/${id}/restore/`)
+  }
+  
+  /**
+   * 删除备份
+   * DELETE /api/system/backup/{id}/
+   */
+  async deleteBackup(id) {
+    return await apiClient.delete(`/api/system/backup/${id}/`)
+  }
+  
+  /**
+   * API测试
+   * GET /api/test/
+   */
+  async apiTest() {
+    return await apiClient.get('/api/test/')
+  }
+  
+  /**
+   * 批量导入数据
+   * POST /api/system/import/
+   */
+  async importData(importData) {
+    return await apiClient.post('/api/system/import/', importData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  }
+  
+  /**
+   * 导出数据
+   * GET /api/system/export/
+   */
+  async exportData(params = {}) {
+    return await apiClient.get('/api/system/export/', {
+      params,
+      responseType: 'blob'
+    })
   }
   
   // ==================== 测试接口 ====================

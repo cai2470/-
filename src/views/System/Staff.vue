@@ -579,6 +579,41 @@ const initDefaultData = () => {
 const loadStaffList = async () => {
   loading.value = true
   try {
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size,
+      ...searchForm
+    }
+    
+    const response = await wmsAPI.getStaff(params)
+    
+    if (response.results) {
+      staffList.value = response.results
+      pagination.total = response.count || 0
+    } else if (Array.isArray(response)) {
+      staffList.value = response
+      pagination.total = response.length
+    } else {
+      staffList.value = []
+      pagination.total = 0
+    }
+
+  } catch (error) {
+    console.error('加载员工列表失败:', error)
+    ElMessage.error('加载员工列表失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadStaffFromLocalStorage()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// localStorage降级处理方法
+const loadStaffFromLocalStorage = () => {
+  try {
     const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
     
     // 应用筛选条件
@@ -607,11 +642,9 @@ const loadStaffList = async () => {
     staffList.value = filteredStaff
     pagination.total = filteredStaff.length
 
+    console.log('从localStorage加载员工数据成功')
   } catch (error) {
-    console.error('加载员工列表失败:', error)
-    ElMessage.error('加载员工列表失败')
-  } finally {
-    loading.value = false
+    console.error('从localStorage加载员工数据失败:', error)
   }
 }
 
@@ -709,17 +742,37 @@ const toggleStatus = async (staff) => {
       }
     )
 
+    const newStatus = staff.status === 'active' ? 'inactive' : 'active'
+    await wmsAPI.updateStaffStatus(staff.id, { status: newStatus })
+    
+    ElMessage.success(`员工状态已更新`)
+    loadStaffList()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('更新员工状态失败:', error)
+      ElMessage.error('状态更新失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        toggleStatusInLocalStorage(staff)
+      }
+    }
+  }
+}
+
+// localStorage降级状态切换方法
+const toggleStatusInLocalStorage = (staff) => {
+  try {
     const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
     const index = staffData.findIndex(s => s.id === staff.id)
     if (index !== -1) {
       staffData[index].status = staff.status === 'active' ? 'inactive' : 'active'
       localStorage.setItem('wms_staff', JSON.stringify(staffData))
+      ElMessage.success(`员工状态已更新 (本地数据)`)
+      loadStaffList()
     }
-
-    ElMessage.success(`员工状态已更新`)
-    loadStaffList()
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('在localStorage中更新员工状态失败:', error)
   }
 }
 
@@ -741,17 +794,37 @@ const deleteStaff = async (staff) => {
       }
     )
 
+    await wmsAPI.deleteStaff(staff.id)
+    ElMessage.success(`员工 "${staff.name}" 已删除`)
+    loadStaffList()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除员工失败:', error)
+      ElMessage.error('删除员工失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        deleteStaffFromLocalStorage(staff)
+      }
+    }
+  }
+}
+
+// localStorage降级删除方法
+const deleteStaffFromLocalStorage = (staff) => {
+  try {
     const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
     const index = staffData.findIndex(s => s.id === staff.id)
     if (index !== -1) {
       staffData.splice(index, 1)
       localStorage.setItem('wms_staff', JSON.stringify(staffData))
-      ElMessage.success(`员工 "${staff.name}" 已删除`)
+      ElMessage.success(`员工 "${staff.name}" 已删除 (本地数据)`)
       loadStaffList()
       emit('refresh')
     }
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('从localStorage删除员工失败:', error)
   }
 }
 
@@ -763,6 +836,37 @@ const saveStaff = async () => {
     await formRef.value.validate()
     saving.value = true
 
+    if (editingId.value) {
+      // 编辑模式
+      await wmsAPI.updateStaff(editingId.value, staffForm)
+      ElMessage.success('员工信息更新成功')
+    } else {
+      // 新建模式
+      await wmsAPI.createStaff(staffForm)
+      ElMessage.success(`员工 ${staffForm.name} 添加成功`)
+    }
+
+    dialogVisible.value = false
+    loadStaffList()
+    emit('refresh')
+  } catch (error) {
+    console.error('保存员工失败:', error)
+    if (error !== false) {
+      ElMessage.error('保存失败')
+    }
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      saveStaffToLocalStorage()
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+// localStorage降级保存方法
+const saveStaffToLocalStorage = () => {
+  try {
     const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
 
     if (editingId.value) {
@@ -775,7 +879,7 @@ const saveStaff = async () => {
           updated_at: new Date().toLocaleString()
         }
       }
-      ElMessage.success('员工信息更新成功')
+      ElMessage.success('员工信息更新成功 (本地数据)')
     } else {
       // 新建模式
       const newStaff = {
@@ -786,7 +890,7 @@ const saveStaff = async () => {
         avatar: ''
       }
       staffData.unshift(newStaff)
-      ElMessage.success(`员工 ${newStaff.name} 添加成功`)
+      ElMessage.success(`员工 ${newStaff.name} 添加成功 (本地数据)`)
     }
 
     localStorage.setItem('wms_staff', JSON.stringify(staffData))
@@ -794,11 +898,7 @@ const saveStaff = async () => {
     loadStaffList()
     emit('refresh')
   } catch (error) {
-    if (error !== false) {
-      ElMessage.error('保存失败')
-    }
-  } finally {
-    saving.value = false
+    console.error('保存到localStorage失败:', error)
   }
 }
 

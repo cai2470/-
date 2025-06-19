@@ -245,6 +245,44 @@ const staffList = ref([])
 // 加载基础数据
 const loadBasicData = async () => {
   try {
+    // 加载拣货人员
+    const staffResponse = await wmsAPI.getStaff({ 
+      status: 'active',
+      position: ['picker', 'warehouse_manager']
+    })
+    
+    const staffData = Array.isArray(staffResponse) ? staffResponse : (staffResponse.results || [])
+    staffList.value = staffData
+      .filter(staff => 
+        staff.status === 'active' && 
+        (staff.position === 'picker' || 
+         staff.position === 'warehouse_manager' ||
+         (staff.roles && staff.roles.includes('operator')))
+      )
+      .map(staff => ({
+        id: staff.id,
+        name: staff.name,
+        staff_no: staff.staff_no,
+        department: staff.department,
+        position: staff.position,
+        phone: staff.phone
+      }))
+    
+    console.log('加载拣货人员:', staffList.value.length, '人')
+  } catch (error) {
+    console.error('加载基础数据失败:', error)
+    ElMessage.error('加载基础数据失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadBasicDataFromLocalStorage()
+    }
+  }
+}
+
+// localStorage降级处理方法
+const loadBasicDataFromLocalStorage = () => {
+  try {
     // 从员工管理系统加载拣货人员
     const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
     staffList.value = staffData
@@ -263,10 +301,9 @@ const loadBasicData = async () => {
         phone: staff.phone
       }))
     
-    console.log('加载拣货人员:', staffList.value.length, '人')
+    console.log('从localStorage加载拣货人员:', staffList.value.length, '人')
   } catch (error) {
-    ElMessage.error('加载基础数据失败')
-    console.error('加载基础数据失败:', error)
+    console.error('从localStorage加载基础数据失败:', error)
   }
 }
 
@@ -274,9 +311,60 @@ const loadBasicData = async () => {
 const loadTableData = async () => {
   loading.value = true
   try {
+    const params = {
+      status: 'picking',
+      page: pagination.page,
+      page_size: pagination.size,
+      ...filterForm
+    }
+    
+    const response = await wmsAPI.getOutboundOrders(params)
+    const orders = Array.isArray(response) ? response : (response.results || [])
+    
+    // 处理数据
+    const pickingOrders = orders.map(order => {
+      const totalQuantity = order.products ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0) : 0
+      const pickedQuantity = order.products ? order.products.reduce((sum, p) => sum + (p.actual_picked_quantity || 0), 0) : 0
+      const pickingProgress = totalQuantity > 0 ? Math.round((pickedQuantity / totalQuantity) * 100) : 0
+      
+      // 获取拣货人员姓名
+      const pickerNames = order.picker_staff ? 
+        order.picker_staff.map(staffId => {
+          const staff = staffList.value.find(s => s.id === staffId)
+          return staff ? staff.name : '未知'
+        }) : []
+      
+      return {
+        ...order,
+        total_quantity: totalQuantity,
+        picked_quantity: pickedQuantity,
+        picking_progress: pickingProgress,
+        picker_names: pickerNames
+      }
+    })
+    
+    tableData.value = pickingOrders
+    pagination.total = response.count || pickingOrders.length
+    
+  } catch (error) {
+    console.error('加载拣货任务列表失败:', error)
+    ElMessage.error('加载拣货任务列表失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadTableDataFromLocalStorage()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// localStorage降级处理方法
+const loadTableDataFromLocalStorage = () => {
+  try {
     // 从localStorage获取出库单数据
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
-    console.log('PickingGoods - 所有出库单数据:', orders)
+    console.log('PickingGoods - 从localStorage获取出库单数据:', orders)
     console.log('PickingGoods - 员工列表:', staffList.value)
     
     // 筛选拣货中状态的订单
@@ -323,10 +411,9 @@ const loadTableData = async () => {
     tableData.value = pickingOrders
     pagination.total = pickingOrders.length
     
+    console.log('从localStorage加载拣货任务列表成功')
   } catch (error) {
-    ElMessage.error('加载拣货任务列表失败')
-  } finally {
-    loading.value = false
+    console.error('从localStorage加载拣货任务列表失败:', error)
   }
 }
 
@@ -377,6 +464,28 @@ const completePicking = async (order) => {
       }
     )
     
+    // 完成拣货
+    await wmsAPI.completePicking(order.id)
+    
+    ElMessage.success(`出库单 ${order.order_no} 拣货已完成，进入打包环节`)
+    loadTableData()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('完成拣货失败:', error)
+      ElMessage.error('完成拣货失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        completePickingInLocalStorage(order)
+      }
+    }
+  }
+}
+
+// localStorage降级完成拣货方法
+const completePickingInLocalStorage = (order) => {
+  try {
     // 更新订单状态为待打包
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     const index = orders.findIndex(o => o.id === order.id)
@@ -390,11 +499,11 @@ const completePicking = async (order) => {
     }
     
     localStorage.setItem('outbound_orders', JSON.stringify(orders))
-    ElMessage.success(`出库单 ${order.order_no} 拣货已完成，进入打包环节`)
+    ElMessage.success(`出库单 ${order.order_no} 拣货已完成，进入打包环节 (本地数据)`)
     loadTableData()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('localStorage完成拣货失败:', error)
   }
 }
 
@@ -411,6 +520,29 @@ const batchCompletePicking = async () => {
       }
     )
     
+    // 批量完成拣货
+    const orderIds = selectedRows.value.map(order => order.id)
+    await wmsAPI.batchCompletePicking(orderIds)
+    
+    ElMessage.success(`已批量完成 ${selectedRows.value.length} 个出库单的拣货`)
+    loadTableData()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('批量完成拣货失败:', error)
+      ElMessage.error('批量完成拣货失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        batchCompletePickingInLocalStorage()
+      }
+    }
+  }
+}
+
+// localStorage降级批量完成拣货方法
+const batchCompletePickingInLocalStorage = () => {
+  try {
     // 批量更新状态为待打包
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     selectedRows.value.forEach(selectedOrder => {
@@ -426,11 +558,11 @@ const batchCompletePicking = async () => {
     })
     
     localStorage.setItem('outbound_orders', JSON.stringify(orders))
-    ElMessage.success(`已批量完成 ${selectedRows.value.length} 个出库单的拣货`)
+    ElMessage.success(`已批量完成 ${selectedRows.value.length} 个出库单的拣货 (本地数据)`)
     loadTableData()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('localStorage批量完成拣货失败:', error)
   }
 }
 

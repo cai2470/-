@@ -396,7 +396,6 @@ import {
 } from '@element-plus/icons-vue'
 import { getInspectionStatusOptions, getPriorityOptions } from '@/utils/filterOptions'
 import { wmsAPI } from '@/utils/api.js'
-import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -525,92 +524,136 @@ const getHandlingMethodText = (method) => {
 const loadInspectionList = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    const mockInspections = [
-      {
-        id: 1,
-        inbound_no: 'IB2024001',
-        product_code: 'HW001',
-        product_name: '华为P50 Pro',
-        batch_number: 'B2024001',
-        quantity: 50,
-        unit: '台',
-        supplier_name: '华为技术有限公司',
-        production_date: '2024-01-01',
-        expiry_date: '2026-01-01',
-        priority: 'high',
-        status: 'pending',
-        inspector: '',
-        inspection_time: '',
-        created_at: '2024-01-15 09:00:00'
-      },
-      {
-        id: 2,
-        inbound_no: 'IB2024002',
-        product_code: 'IP001',
-        product_name: 'iPhone 14 Pro',
-        batch_number: 'B2024002',
-        quantity: 30,
-        unit: '台',
-        supplier_name: '苹果公司',
-        production_date: '2024-01-02',
-        expiry_date: '2026-01-02',
-        priority: 'medium',
-        status: 'inspecting',
-        inspector: '张三',
-        inspection_time: '',
-        created_at: '2024-01-15 10:30:00'
-      },
-      {
-        id: 3,
-        inbound_no: 'IB2024003',
-        product_code: 'XM001',
-        product_name: '小米13 Pro',
-        batch_number: 'B2024003',
-        quantity: 40,
-        unit: '台',
-        supplier_name: '小米科技',
-        production_date: '2024-01-03',
-        expiry_date: '2026-01-03',
-        priority: 'low',
-        status: 'passed',
-        inspector: '李四',
-        inspection_time: '2024-01-15 14:30:00',
-        created_at: '2024-01-15 11:00:00'
-      },
-      {
-        id: 4,
-        inbound_no: 'IB2024004',
-        product_code: 'OP001',
-        product_name: 'OPPO Find X5',
-        batch_number: 'B2024004',
-        quantity: 25,
-        unit: '台',
-        supplier_name: 'OPPO公司',
-        production_date: '2024-01-04',
-        expiry_date: '2026-01-04',
-        priority: 'high',
-        status: 'failed',
-        inspector: '王五',
-        inspection_time: '2024-01-15 15:45:00',
-        created_at: '2024-01-15 12:00:00'
-      }
-    ]
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size,
+      ...searchForm
+    }
     
-    inspectionList.value = mockInspections
-    pagination.total = mockInspections.length
+    const response = await wmsAPI.getInspections(params)
     
-    // 更新统计数据
-    inspectionStats.pending = mockInspections.filter(item => item.status === 'pending').length
-    inspectionStats.inspecting = mockInspections.filter(item => item.status === 'inspecting').length
-    inspectionStats.passed = mockInspections.filter(item => item.status === 'passed').length
-    inspectionStats.failed = mockInspections.filter(item => item.status === 'failed').length
+    if (response.results) {
+      inspectionList.value = response.results
+      pagination.total = response.count || 0
+    } else if (Array.isArray(response)) {
+      inspectionList.value = response
+      pagination.total = response.length
+    } else {
+      inspectionList.value = []
+      pagination.total = 0
+    }
+    
+    // 加载统计数据
+    await loadInspectionStats()
     
   } catch (error) {
+    console.error('加载质检列表失败:', error)
     ElMessage.error('加载质检列表失败')
+    // API降级处理 - 开发环境可以使用模拟数据
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadMockInspections()
+    }
   } finally {
     loading.value = false
   }
+}
+
+// 加载质检统计数据
+const loadInspectionStats = async () => {
+  try {
+    const stats = await wmsAPI.getInspectionStats()
+    Object.assign(inspectionStats, stats)
+  } catch (error) {
+    console.error('加载质检统计失败:', error)
+    // 从列表数据计算统计
+    calculateStatsFromList()
+  }
+}
+
+// 从列表数据计算统计
+const calculateStatsFromList = () => {
+  inspectionStats.pending = inspectionList.value.filter(item => item.status === 'pending').length
+  inspectionStats.inspecting = inspectionList.value.filter(item => item.status === 'inspecting').length
+  inspectionStats.passed = inspectionList.value.filter(item => item.status === 'passed').length
+  inspectionStats.failed = inspectionList.value.filter(item => item.status === 'failed').length
+}
+
+// 模拟数据降级处理（仅开发环境）
+const loadMockInspections = () => {
+  const mockInspections = [
+    {
+      id: 1,
+      inbound_no: 'IB2024001',
+      product_code: 'HW001',
+      product_name: '华为P50 Pro',
+      batch_number: 'B2024001',
+      quantity: 50,
+      unit: '台',
+      supplier_name: '华为技术有限公司',
+      production_date: '2024-01-01',
+      expiry_date: '2026-01-01',
+      priority: 'high',
+      status: 'pending',
+      inspector: '',
+      inspection_time: '',
+      created_at: '2024-01-15 09:00:00'
+    },
+    {
+      id: 2,
+      inbound_no: 'IB2024002',
+      product_code: 'IP001',
+      product_name: 'iPhone 14 Pro',
+      batch_number: 'B2024002',
+      quantity: 30,
+      unit: '台',
+      supplier_name: '苹果公司',
+      production_date: '2024-01-02',
+      expiry_date: '2026-01-02',
+      priority: 'medium',
+      status: 'inspecting',
+      inspector: '张三',
+      inspection_time: '',
+      created_at: '2024-01-15 10:30:00'
+    },
+    {
+      id: 3,
+      inbound_no: 'IB2024003',
+      product_code: 'XM001',
+      product_name: '小米13 Pro',
+      batch_number: 'B2024003',
+      quantity: 40,
+      unit: '台',
+      supplier_name: '小米科技',
+      production_date: '2024-01-03',
+      expiry_date: '2026-01-03',
+      priority: 'low',
+      status: 'passed',
+      inspector: '李四',
+      inspection_time: '2024-01-15 14:30:00',
+      created_at: '2024-01-15 11:00:00'
+    },
+    {
+      id: 4,
+      inbound_no: 'IB2024004',
+      product_code: 'OP001',
+      product_name: 'OPPO Find X5',
+      batch_number: 'B2024004',
+      quantity: 25,
+      unit: '台',
+      supplier_name: 'OPPO公司',
+      production_date: '2024-01-04',
+      expiry_date: '2026-01-04',
+      priority: 'high',
+      status: 'failed',
+      inspector: '王五',
+      inspection_time: '2024-01-15 15:45:00',
+      created_at: '2024-01-15 12:00:00'
+    }
+  ]
+  
+  inspectionList.value = mockInspections
+  pagination.total = mockInspections.length
+  calculateStatsFromList()
 }
 
 // 搜索质检
@@ -641,25 +684,54 @@ const handleSelectionChange = (selection) => {
 }
 
 // 批量质检
-const batchInspect = () => {
+const batchInspect = async () => {
   if (selectedRows.value.length === 0) {
     ElMessage.warning('请选择要批量质检的商品')
     return
   }
-  ElMessage.info(`批量质检 ${selectedRows.value.length} 个商品`)
+  
+  try {
+    const inspectionIds = selectedRows.value.map(row => row.id)
+    await wmsAPI.batchInspect(inspectionIds, {
+      result: 'pending',
+      remark: '批量质检操作'
+    })
+    
+    ElMessage.success(`批量质检 ${selectedRows.value.length} 个商品成功`)
+    loadInspectionList()
+  } catch (error) {
+    console.error('批量质检失败:', error)
+    ElMessage.error('批量质检失败')
+  }
 }
 
 // 开始质检
-const startInspection = (inspection) => {
-  currentInspection.value = inspection
-  resetInspectionForm()
-  inspectionDialogVisible.value = true
+const startInspection = async (inspection) => {
+  try {
+    await wmsAPI.startInspection(inspection.id, {
+      inspector: wmsAPI.getCurrentUserLocal()?.username || '当前用户'
+    })
+    
+    currentInspection.value = { ...inspection, status: 'inspecting' }
+    resetInspectionForm()
+    inspectionDialogVisible.value = true
+    
+    ElMessage.success('已开始质检')
+    loadInspectionList()
+  } catch (error) {
+    console.error('开始质检失败:', error)
+    ElMessage.error('开始质检失败')
+    // 降级处理：直接打开对话框
+    currentInspection.value = inspection
+    resetInspectionForm()
+    inspectionDialogVisible.value = true
+  }
 }
 
 // 完成质检
 const completeInspection = (inspection) => {
   currentInspection.value = inspection
-  // 如果已经在质检中，直接打开质检对话框
+  resetInspectionForm()
   inspectionDialogVisible.value = true
 }
 
@@ -688,22 +760,32 @@ const viewDetails = (inspection) => {
 }
 
 // 查看质检报告
-const viewReport = (inspection) => {
-  // 模拟质检报告数据
-  currentReport.value = {
-    ...inspection,
-    details: [
-      { item: '外观检查', result: '合格', remark: '外观完好无损' },
-      { item: '功能测试', result: inspection.status === 'passed' ? '合格' : '不合格', remark: inspection.status === 'passed' ? '功能正常' : '部分功能异常' },
-      { item: '包装检查', result: '合格', remark: '包装完整' },
-      { item: '数量核验', result: '合格', remark: '数量准确' }
-    ],
-    failed_items: inspection.status === 'failed' ? ['功能异常', '规格不符'] : [],
-    failed_quantity: inspection.status === 'failed' ? 5 : 0,
-    handling_method: inspection.status === 'failed' ? 'return' : '',
-    remark: inspection.status === 'failed' ? '发现部分商品功能异常，建议退回供应商处理' : '质检通过，可以入库'
+const viewReport = async (inspection) => {
+  try {
+    const report = await wmsAPI.getInspectionReport(inspection.id)
+    currentReport.value = report
+    reportDialogVisible.value = true
+  } catch (error) {
+    console.error('获取质检报告失败:', error)
+    ElMessage.error('获取质检报告失败')
+    // 降级处理：使用模拟数据
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      currentReport.value = {
+        ...inspection,
+        details: [
+          { item: '外观检查', result: '合格', remark: '外观完好无损' },
+          { item: '功能测试', result: inspection.status === 'passed' ? '合格' : '不合格', remark: inspection.status === 'passed' ? '功能正常' : '部分功能异常' },
+          { item: '包装检查', result: '合格', remark: '包装完整' },
+          { item: '数量核验', result: '合格', remark: '数量准确' }
+        ],
+        failed_items: inspection.status === 'failed' ? ['功能异常', '规格不符'] : [],
+        failed_quantity: inspection.status === 'failed' ? 5 : 0,
+        handling_method: inspection.status === 'failed' ? 'return' : '',
+        remark: inspection.status === 'failed' ? '发现部分商品功能异常，建议退回供应商处理' : '质检通过，可以入库'
+      }
+      reportDialogVisible.value = true
+    }
   }
-  reportDialogVisible.value = true
 }
 
 // 图片上传处理
@@ -719,13 +801,19 @@ const saveInspection = async () => {
     await inspectionFormRef.value.validate()
     saving.value = true
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const inspectionData = {
+      ...inspectionForm,
+      inspector: wmsAPI.getCurrentUserLocal()?.username || '当前用户',
+      inspection_time: new Date().toISOString()
+    }
+    
+    await wmsAPI.completeInspection(currentInspection.value.id, inspectionData)
     
     ElMessage.success('质检结果保存成功')
     inspectionDialogVisible.value = false
     loadInspectionList()
   } catch (error) {
+    console.error('保存质检结果失败:', error)
     if (error !== false) {
       ElMessage.error('保存失败')
     }
@@ -751,8 +839,27 @@ const resetInspectionForm = () => {
 }
 
 // 打印报告
-const printReport = () => {
-  ElMessage.info('打印功能开发中...')
+const printReport = async () => {
+  try {
+    if (!currentReport.value) return
+    
+    const blob = await wmsAPI.printInspectionReport(currentReport.value.id)
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `质检报告-${currentReport.value.inbound_no}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('报告已下载')
+  } catch (error) {
+    console.error('打印报告失败:', error)
+    ElMessage.info('打印功能开发中...')
+  }
 }
 
 // 分页处理

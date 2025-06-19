@@ -376,7 +376,41 @@ const dialogTitle = computed(() => isEdit.value ? '编辑用户' : '新增用户
 const loadUsers = async () => {
   loading.value = true
   try {
-    // 从localStorage加载用户数据
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size,
+      ...filterForm
+    }
+    
+    const response = await wmsAPI.getUsers(params)
+    
+    if (response.results) {
+      userList.value = response.results
+      pagination.total = response.count || 0
+    } else if (Array.isArray(response)) {
+      userList.value = response
+      pagination.total = response.length
+    } else {
+      userList.value = []
+      pagination.total = 0
+    }
+    
+  } catch (error) {
+    console.error('加载用户列表失败:', error)
+    ElMessage.error('加载用户列表失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadUsersFromLocalStorage()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// localStorage降级处理方法
+const loadUsersFromLocalStorage = () => {
+  try {
     const storedUsers = localStorage.getItem('wms_users')
     let users = []
     
@@ -463,11 +497,9 @@ const loadUsers = async () => {
     userList.value = filteredUsers
     pagination.total = filteredUsers.length
     
+    console.log('从localStorage加载用户数据成功')
   } catch (error) {
-    ElMessage.error('加载用户列表失败')
-    console.error('加载用户列表失败:', error)
-  } finally {
-    loading.value = false
+    console.error('从localStorage加载用户数据失败:', error)
   }
 }
 
@@ -530,6 +562,35 @@ const saveUser = async () => {
     await userFormRef.value.validate()
     saving.value = true
     
+    if (isEdit.value) {
+      // 更新用户
+      await wmsAPI.updateUser(userForm.id, userForm)
+      ElMessage.success('用户更新成功')
+    } else {
+      // 新增用户
+      await wmsAPI.createUser(userForm)
+      ElMessage.success('用户创建成功')
+    }
+    
+    dialogVisible.value = false
+    loadUsers()
+    
+  } catch (error) {
+    console.error('保存用户失败:', error)
+    ElMessage.error('保存用户失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      saveUserToLocalStorage()
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+// localStorage降级保存方法
+const saveUserToLocalStorage = () => {
+  try {
     const users = JSON.parse(localStorage.getItem('wms_users') || '[]')
     
     if (isEdit.value) {
@@ -556,7 +617,7 @@ const saveUser = async () => {
         }
         
         localStorage.setItem('wms_users', JSON.stringify(users))
-        ElMessage.success('用户更新成功')
+        ElMessage.success('用户更新成功 (本地数据)')
       }
     } else {
       // 新增用户
@@ -585,16 +646,13 @@ const saveUser = async () => {
       
       users.push(newUser)
       localStorage.setItem('wms_users', JSON.stringify(users))
-      ElMessage.success('用户创建成功')
+      ElMessage.success('用户创建成功 (本地数据)')
     }
     
     dialogVisible.value = false
     loadUsers()
-    
   } catch (error) {
-    console.error('保存用户失败:', error)
-  } finally {
-    saving.value = false
+    console.error('保存到localStorage失败:', error)
   }
 }
 
@@ -650,12 +708,17 @@ const savePassword = async () => {
     await passwordFormRef.value.validate()
     saving.value = true
     
-    // 这里应该调用API重置密码
+    await wmsAPI.changePassword({
+      user_id: passwordForm.userId,
+      new_password: passwordForm.newPassword
+    })
+    
     ElMessage.success('密码重置成功')
     passwordDialogVisible.value = false
     
   } catch (error) {
     console.error('重置密码失败:', error)
+    ElMessage.error('重置密码失败')
   } finally {
     saving.value = false
   }
@@ -674,17 +737,34 @@ const deleteUser = async (row) => {
       }
     )
     
-    const users = JSON.parse(localStorage.getItem('wms_users') || '[]')
-    const filteredUsers = users.filter(u => u.id !== row.id)
-    localStorage.setItem('wms_users', JSON.stringify(filteredUsers))
-    
+    await wmsAPI.deleteUser(row.id)
     ElMessage.success('用户删除成功')
     loadUsers()
     
   } catch (error) {
     if (error !== 'cancel') {
+      console.error('删除用户失败:', error)
       ElMessage.error('删除用户失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        deleteUserFromLocalStorage(row)
+      }
     }
+  }
+}
+
+// localStorage降级删除方法
+const deleteUserFromLocalStorage = (row) => {
+  try {
+    const users = JSON.parse(localStorage.getItem('wms_users') || '[]')
+    const filteredUsers = users.filter(u => u.id !== row.id)
+    localStorage.setItem('wms_users', JSON.stringify(filteredUsers))
+    
+    ElMessage.success('用户删除成功 (本地数据)')
+    loadUsers()
+  } catch (error) {
+    console.error('从localStorage删除用户失败:', error)
   }
 }
 

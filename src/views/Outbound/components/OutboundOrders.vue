@@ -642,6 +642,68 @@ const filterProducts = () => {
 // 加载基础数据
 const loadBasicData = async () => {
   try {
+    // 加载仓库数据
+    const warehouseResponse = await wmsAPI.getWarehouses({ status: 'active' })
+    const warehouseData = Array.isArray(warehouseResponse) ? warehouseResponse : (warehouseResponse.results || [])
+    warehouses.value = warehouseData.filter(w => {
+      const status = w.status
+      return status === '启用' || status === 1 || status === 'active' || status === '正常'
+    }).map(w => ({
+      id: w.id,
+      name: w.name,
+      code: w.code
+    }))
+
+    // 加载商品数据和库存数据
+    const [productsResponse, inventoryResponse] = await Promise.all([
+      wmsAPI.getProducts(),
+      wmsAPI.getInventoryStock()
+    ])
+    
+    const productsData = Array.isArray(productsResponse) ? productsResponse : (productsResponse.results || [])
+    const inventoryData = Array.isArray(inventoryResponse) ? inventoryResponse : (inventoryResponse.results || [])
+    
+    // 计算每个商品的可用库存
+    availableProducts.value = productsData.map(product => {
+      // 计算该商品在所有仓库的总可用库存
+      const productInventory = inventoryData.filter(inv => 
+        inv.product_code === product.code || inv.product_id === product.id
+      )
+      const totalAvailableStock = productInventory.reduce((sum, inv) => 
+        sum + (inv.available_stock || 0), 0
+      )
+      
+      return {
+        id: product.id,
+        code: product.code,
+        isku: product.isku,
+        name: product.name,
+        unit: product.unit || '个',
+        price: parseFloat(product.price || 0),
+        available_stock: totalAvailableStock,
+        image: product.image,
+        attributes: product.attributes || []
+      }
+    }).filter(p => p.available_stock > 0) // 只显示有库存的商品
+
+    console.log('加载基础数据完成:', {
+      warehouses: warehouses.value.length,
+      products: availableProducts.value.length
+    })
+  } catch (error) {
+    console.error('加载基础数据失败:', error)
+    ElMessage.error('加载基础数据失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadBasicDataFromLocalStorage()
+    }
+  }
+}
+
+// localStorage降级处理方法
+const loadBasicDataFromLocalStorage = () => {
+  try {
     // 从localStorage加载仓库数据
     const warehouseData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
     warehouses.value = warehouseData.filter(w => {
@@ -680,13 +742,12 @@ const loadBasicData = async () => {
       }
     }).filter(p => p.available_stock > 0) // 只显示有库存的商品
 
-    console.log('加载基础数据完成:', {
+    console.log('从localStorage加载基础数据完成:', {
       warehouses: warehouses.value.length,
       products: availableProducts.value.length
     })
   } catch (error) {
-    console.error('加载基础数据失败:', error)
-    ElMessage.error('加载基础数据失败')
+    console.error('从localStorage加载基础数据失败:', error)
   }
 }
 
@@ -773,6 +834,45 @@ const loadProductsByWarehouse = async (warehouseId) => {
 const loadOrderList = async () => {
   loading.value = true
   try {
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size,
+      ...searchForm
+    }
+    
+    const response = await wmsAPI.getOutboundOrders(params)
+    const orders = Array.isArray(response) ? response : (response.results || [])
+    
+    // 补充仓库名称
+    const processedOrders = orders.map(order => {
+      const warehouse = warehouses.value.find(w => w.id === order.warehouse_id)
+      return {
+        ...order,
+        warehouse_name: warehouse ? warehouse.name : '未知仓库',
+        total_quantity: order.products ? order.products.reduce((sum, p) => sum + (p.quantity || 0), 0) : 0,
+        total_amount: order.products ? order.products.reduce((sum, p) => sum + (p.amount || 0), 0) : 0
+      }
+    })
+
+    orderList.value = processedOrders
+    pagination.total = response.count || processedOrders.length
+
+  } catch (error) {
+    console.error('加载出库单列表失败:', error)
+    ElMessage.error('加载出库单列表失败')
+    
+    // API降级处理 - 开发环境可以使用localStorage
+    if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+      loadOrderListFromLocalStorage()
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// localStorage降级处理方法
+const loadOrderListFromLocalStorage = () => {
+  try {
     // 从localStorage获取出库单数据
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     
@@ -808,11 +908,9 @@ const loadOrderList = async () => {
     orderList.value = processedOrders
     pagination.total = processedOrders.length
 
+    console.log('从localStorage加载出库单列表成功')
   } catch (error) {
-    console.error('加载出库单列表失败:', error)
-    ElMessage.error('加载出库单列表失败')
-  } finally {
-    loading.value = false
+    console.error('从localStorage加载出库单列表失败:', error)
   }
 }
 
@@ -902,7 +1000,29 @@ const confirmOrder = async (order) => {
       }
     )
 
-    console.log('=== 开始确认出库单并扣减库存 ===')
+    // 确认出库单
+    await wmsAPI.confirmOutboundOrder(order.id)
+
+    ElMessage.success('出库单已确认，库存已自动扣减！')
+    loadOrderList()
+    emit('refresh')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('确认出库单失败:', error)
+      ElMessage.error('确认出库单失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        confirmOrderInLocalStorage(order)
+      }
+    }
+  }
+}
+
+// localStorage降级确认出库单方法
+const confirmOrderInLocalStorage = async (order) => {
+  try {
+    console.log('=== 开始确认出库单并扣减库存 (本地数据) ===')
     console.log('出库单信息:', order)
 
     // 获取库存数据
@@ -1000,15 +1120,15 @@ const confirmOrder = async (order) => {
     ).join('\n')
 
     ElMessage.success({
-      message: `出库单已确认，库存已自动扣减！\n\n扣减明细：\n${reductionDetails}`,
+      message: `出库单已确认，库存已自动扣减！(本地数据)\n\n扣减明细：\n${reductionDetails}`,
       duration: 5000,
       showClose: true
     })
 
     loadOrderList()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    console.error('localStorage确认出库单失败:', error)
   }
 }
 
@@ -1026,15 +1146,37 @@ const deleteOrder = async (order) => {
     )
 
     // 删除出库单
-    const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
-    const filteredOrders = orders.filter(o => o.id !== order.id)
-    localStorage.setItem('outbound_orders', JSON.stringify(filteredOrders))
+    await wmsAPI.deleteOutboundOrder(order.id)
 
     ElMessage.success('出库单已删除')
     loadOrderList()
     emit('refresh')
-  } catch {
-    // 用户取消操作
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除出库单失败:', error)
+      ElMessage.error('删除出库单失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        deleteOrderInLocalStorage(order)
+      }
+    }
+  }
+}
+
+// localStorage降级删除出库单方法
+const deleteOrderInLocalStorage = (order) => {
+  try {
+    // 删除出库单
+    const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
+    const filteredOrders = orders.filter(o => o.id !== order.id)
+    localStorage.setItem('outbound_orders', JSON.stringify(filteredOrders))
+
+    ElMessage.success('出库单已删除 (本地数据)')
+    loadOrderList()
+    emit('refresh')
+  } catch (error) {
+    console.error('localStorage删除出库单失败:', error)
   }
 }
 
@@ -1143,6 +1285,45 @@ const saveOrder = async () => {
     // 计算总金额
     const totalAmount = orderForm.products.reduce((sum, p) => sum + (p.amount || 0), 0)
 
+    const orderData = {
+      ...orderForm,
+      total_amount: totalAmount
+    }
+
+    if (editingId.value) {
+      // 编辑模式
+      await wmsAPI.updateOutboundOrder(editingId.value, orderData)
+      ElMessage.success('出库单更新成功')
+    } else {
+      // 新建模式
+      const newOrder = await wmsAPI.createOutboundOrder(orderData)
+      ElMessage.success(`出库单 ${newOrder.order_no} 创建成功`)
+    }
+
+    dialogVisible.value = false
+    loadOrderList()
+    emit('refresh')
+  } catch (error) {
+    console.error('保存出库单失败:', error)
+    if (error !== false && error !== 'validate') {
+      ElMessage.error('保存失败')
+      
+      // API降级处理 - 开发环境可以使用localStorage
+      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        saveOrderInLocalStorage()
+      }
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+// localStorage降级保存出库单方法
+const saveOrderInLocalStorage = () => {
+  try {
+    // 计算总金额
+    const totalAmount = orderForm.products.reduce((sum, p) => sum + (p.amount || 0), 0)
+
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
 
     if (editingId.value) {
@@ -1156,7 +1337,7 @@ const saveOrder = async () => {
           updated_at: new Date().toLocaleString()
         }
       }
-      ElMessage.success('出库单更新成功')
+      ElMessage.success('出库单更新成功 (本地数据)')
     } else {
       // 新建模式
       const newOrder = {
@@ -1170,7 +1351,7 @@ const saveOrder = async () => {
         updated_at: new Date().toLocaleString()
       }
       orders.unshift(newOrder) // 插入到数组开头，显示在表格第一行
-      ElMessage.success(`出库单 ${newOrder.order_no} 创建成功`)
+      ElMessage.success(`出库单 ${newOrder.order_no} 创建成功 (本地数据)`)
     }
 
     localStorage.setItem('outbound_orders', JSON.stringify(orders))
@@ -1178,11 +1359,7 @@ const saveOrder = async () => {
     loadOrderList()
     emit('refresh')
   } catch (error) {
-    if (error !== false) {
-      ElMessage.error('保存失败')
-    }
-  } finally {
-    saving.value = false
+    console.error('localStorage保存出库单失败:', error)
   }
 }
 
