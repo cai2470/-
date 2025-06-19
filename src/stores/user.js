@@ -65,7 +65,7 @@ export const useUserStore = defineStore('user', () => {
     } catch (error) {
       // 如果API不可用，使用演示模式
       console.warn('API不可用，使用演示模式登录:', error.message)
-      return await loginDemo(loginData)
+        return await loginDemo(loginData)
     }
   }
 

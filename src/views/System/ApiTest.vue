@@ -204,6 +204,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Promotion, Refresh } from '@element-plus/icons-vue'
 import api from '@/utils/api'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const baseURL = ref('')

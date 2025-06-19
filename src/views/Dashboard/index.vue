@@ -149,22 +149,22 @@ const loadStats = async () => {
     
     // 1. 仓库数量：从wms_warehouses读取，统计状态为启用的仓库
     const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-    const activeWarehouses = warehousesData.filter(w => w.status === 1).length
+    const activeWarehouses = Array.isArray(warehousesData) ? warehousesData.filter(w => w.status === 1).length : 0
     
     // 2. 商品种类：从wms_products读取，统计状态为正常的商品
     const productsData = JSON.parse(localStorage.getItem('wms_products') || '[]')
-    const activeProducts = productsData.filter(p => p.status === '正常').length
+    const activeProducts = Array.isArray(productsData) ? productsData.filter(p => p.status === '正常').length : 0
     
     // 3. 总库存量：从inventory_stock读取，汇总所有库存记录的当前库存
     const inventoryData = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
-    const totalStock = inventoryData.reduce((sum, item) => sum + (item.current_stock || 0), 0)
+    const totalStock = Array.isArray(inventoryData) ? inventoryData.reduce((sum, item) => sum + (item.current_stock || 0), 0) : 0
     
     // 4. 库存预警：统计当前库存小于等于最低库存的商品数量
-    const alertProducts = inventoryData.filter(item => {
+    const alertProducts = Array.isArray(inventoryData) ? inventoryData.filter(item => {
       const currentStock = item.current_stock || 0
       const minStock = item.min_stock || 0
       return currentStock <= minStock && currentStock > 0 // 排除已缺货的
-    }).length
+    }).length : 0
     
     stats.value = {
       warehouses: activeWarehouses || 0,
@@ -199,10 +199,10 @@ const updateRecentActivities = () => {
     
     // 从入库订单获取最近的入库操作
     const inboundOrders = JSON.parse(localStorage.getItem('inbound_orders') || '[]')
-    const recentInbound = inboundOrders
+    const recentInbound = Array.isArray(inboundOrders) ? inboundOrders
       .filter(order => order.status === '已完成')
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-      .slice(0, 2)
+      .slice(0, 2) : []
     
     recentInbound.forEach(order => {
       activities.push({
@@ -217,10 +217,10 @@ const updateRecentActivities = () => {
     
     // 从出库订单获取最近的出库操作
     const outboundOrders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
-    const recentOutbound = outboundOrders
+    const recentOutbound = Array.isArray(outboundOrders) ? outboundOrders
       .filter(order => order.status === '已完成')
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
-      .slice(0, 2)
+      .slice(0, 2) : []
     
     recentOutbound.forEach(order => {
       activities.push({
@@ -235,14 +235,14 @@ const updateRecentActivities = () => {
     
     // 从库存数据获取预警商品
     const inventoryData = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
-    const alertItems = inventoryData
+    const alertItems = Array.isArray(inventoryData) ? inventoryData
       .filter(item => {
         const currentStock = item.current_stock || 0
         const minStock = item.min_stock || 0
         return currentStock <= minStock && currentStock > 0
       })
       .sort((a, b) => (a.current_stock / (a.min_stock || 1)) - (b.current_stock / (b.min_stock || 1)))
-      .slice(0, 2)
+      .slice(0, 2) : []
     
     alertItems.forEach(item => {
       activities.push({

@@ -7,14 +7,32 @@
  */
 export const getWarehouseOptions = () => {
   try {
-    const warehouses = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+    const stored = localStorage.getItem('wms_warehouses')
+    if (!stored) {
+      return [
+        { id: 1, label: '主仓库', value: 1, code: 'WH001' },
+        { id: 2, label: '北京仓库', value: 2, code: 'WH002' },
+        { id: 3, label: '上海仓库', value: 3, code: 'WH003' }
+      ]
+    }
+    
+    const warehouses = JSON.parse(stored)
+    if (!Array.isArray(warehouses)) {
+      console.warn('仓库数据不是数组格式，使用默认数据')
+      return [
+        { id: 1, label: '主仓库', value: 1, code: 'WH001' },
+        { id: 2, label: '北京仓库', value: 2, code: 'WH002' },
+        { id: 3, label: '上海仓库', value: 3, code: 'WH003' }
+      ]
+    }
+    
     return warehouses
-      .filter(w => w.status === 1)
+      .filter(w => w && w.status === 1)
       .map(w => ({
         id: w.id,
-        label: w.name,
+        label: w.name || '未知仓库',
         value: w.id,
-        code: w.code
+        code: w.code || 'UNKNOWN'
       }))
       .sort((a, b) => a.label.localeCompare(b.label))
   } catch (error) {
@@ -34,8 +52,18 @@ export const getWarehouseOptions = () => {
  */
 export const getZoneOptions = (warehouseId = null) => {
   try {
-    const zones = JSON.parse(localStorage.getItem('wms_zones') || '[]')
-    let filteredZones = zones.filter(z => z.status === 1)
+    const stored = localStorage.getItem('wms_zones')
+    if (!stored) {
+      return []
+    }
+    
+    const zones = JSON.parse(stored)
+    if (!Array.isArray(zones)) {
+      console.warn('库区数据不是数组格式')
+      return []
+    }
+    
+    let filteredZones = zones.filter(z => z && z.status === 1)
     
     if (warehouseId) {
       filteredZones = filteredZones.filter(z => z.warehouse_id === warehouseId)
@@ -44,7 +72,7 @@ export const getZoneOptions = (warehouseId = null) => {
     return filteredZones
       .map(z => ({
         id: z.id,
-        label: z.name,
+        label: z.name || '未知库区',
         value: z.id,
         warehouse_id: z.warehouse_id
       }))
@@ -61,14 +89,34 @@ export const getZoneOptions = (warehouseId = null) => {
  */
 export const getCategoryOptions = () => {
   try {
-    const categories = JSON.parse(localStorage.getItem('wms_categories') || '[]')
+    const stored = localStorage.getItem('wms_categories')
+    if (!stored) {
+      return [
+        { id: 1, label: '手机数码', value: '手机数码', code: 'ELECTRONICS' },
+        { id: 2, label: '电脑办公', value: '电脑办公', code: 'COMPUTER' },
+        { id: 3, label: '家用电器', value: '家用电器', code: 'APPLIANCE' },
+        { id: 4, label: '服装鞋帽', value: '服装鞋帽', code: 'CLOTHING' }
+      ]
+    }
+    
+    const categories = JSON.parse(stored)
+    if (!Array.isArray(categories)) {
+      console.warn('分类数据不是数组格式，使用默认数据')
+      return [
+        { id: 1, label: '手机数码', value: '手机数码', code: 'ELECTRONICS' },
+        { id: 2, label: '电脑办公', value: '电脑办公', code: 'COMPUTER' },
+        { id: 3, label: '家用电器', value: '家用电器', code: 'APPLIANCE' },
+        { id: 4, label: '服装鞋帽', value: '服装鞋帽', code: 'CLOTHING' }
+      ]
+    }
+    
     return categories
-      .filter(c => c.status === 1)
+      .filter(c => c && c.status === 1)
       .map(c => ({
         id: c.id,
-        label: c.name,
-        value: c.name,
-        code: c.code
+        label: c.name || '未知分类',
+        value: c.name || '未知分类',
+        code: c.code || 'UNKNOWN'
       }))
       .sort((a, b) => a.label.localeCompare(b.label))
   } catch (error) {
@@ -125,8 +173,22 @@ export const getSupplierOptions = () => {
  */
 export const getProductCategoryOptions = () => {
   try {
-    const products = JSON.parse(localStorage.getItem('wms_products') || '[]')
-    const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
+    const stored = localStorage.getItem('wms_products')
+    if (!stored) {
+      return []
+    }
+    
+    const products = JSON.parse(stored)
+    if (!Array.isArray(products)) {
+      console.warn('商品数据不是数组格式')
+      return []
+    }
+    
+    const categories = [...new Set(products
+      .map(p => p && p.category)
+      .filter(Boolean)
+    )]
+    
     return categories.map(cat => ({
       label: cat,
       value: cat
@@ -146,13 +208,29 @@ export const getAllCategoryOptions = () => {
     const dbCategories = getCategoryOptions()
     const productCategories = getProductCategoryOptions()
     
+    // 确保两个数组都是有效的数组
+    const safeDbCategories = Array.isArray(dbCategories) ? dbCategories : []
+    const safeProductCategories = Array.isArray(productCategories) ? productCategories : []
+    
     // 合并并去重
-    const allCategories = [...dbCategories, ...productCategories]
+    const allCategories = [...safeDbCategories, ...safeProductCategories]
     const uniqueCategories = allCategories.filter((cat, index, self) => 
-      index === self.findIndex(c => c.value === cat.value)
+      cat && cat.value && index === self.findIndex(c => c && c.value === cat.value)
     )
     
-    return uniqueCategories.sort((a, b) => a.label.localeCompare(b.label))
+    const result = uniqueCategories.sort((a, b) => a.label.localeCompare(b.label))
+    
+    // 确保返回的数组不为空
+    if (result.length === 0) {
+      return [
+        { id: 1, label: '手机数码', value: '手机数码', code: 'ELECTRONICS' },
+        { id: 2, label: '电脑办公', value: '电脑办公', code: 'COMPUTER' },
+        { id: 3, label: '家用电器', value: '家用电器', code: 'APPLIANCE' },
+        { id: 4, label: '服装鞋帽', value: '服装鞋帽', code: 'CLOTHING' }
+      ]
+    }
+    
+    return result
   } catch (error) {
     console.error('获取所有分类选项失败:', error)
     return getCategoryOptions() // 出错时使用分类管理中的数据

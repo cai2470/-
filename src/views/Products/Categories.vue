@@ -110,6 +110,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -149,176 +151,196 @@ const rules = {
   ]
 }
 
-// 从本地存储加载数据
-const loadFromStorage = () => {
+// API错误降级处理
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 获取本地存储默认数据
+  const getDefaultCategories = () => [
+    {
+      id: 1,
+      parent_id: null,
+      code: 'ELECTRONICS',
+      name: '手机数码',
+      sort: 1,
+      description: '手机、平板、智能穿戴等数码产品',
+      product_count: 15,
+      status: 1,
+      children: [
+        {
+          id: 11,
+          parent_id: 1,
+          code: 'PHONE',
+          name: '手机',
+          sort: 1,
+          description: '智能手机产品',
+          product_count: 8,
+          status: 1
+        },
+        {
+          id: 12,
+          parent_id: 1,
+          code: 'TABLET',
+          name: '平板电脑',
+          sort: 2,
+          description: '平板电脑产品',
+          product_count: 5,
+          status: 1
+        },
+        {
+          id: 13,
+          parent_id: 1,
+          code: 'WEARABLE',
+          name: '智能穿戴',
+          sort: 3,
+          description: '智能手表、手环等',
+          product_count: 2,
+          status: 1
+        }
+      ]
+    },
+    {
+      id: 2,
+      parent_id: null,
+      code: 'COMPUTER',
+      name: '电脑办公',
+      sort: 2,
+      description: '电脑、办公设备等',
+      product_count: 12,
+      status: 1,
+      children: [
+        {
+          id: 21,
+          parent_id: 2,
+          code: 'LAPTOP',
+          name: '笔记本电脑',
+          sort: 1,
+          description: '笔记本电脑产品',
+          product_count: 6,
+          status: 1
+        },
+        {
+          id: 22,
+          parent_id: 2,
+          code: 'DESKTOP',
+          name: '台式机',
+          sort: 2,
+          description: '台式机产品',
+          product_count: 4,
+          status: 1
+        },
+        {
+          id: 23,
+          parent_id: 2,
+          code: 'OFFICE',
+          name: '办公设备',
+          sort: 3,
+          description: '打印机、投影仪等',
+          product_count: 2,
+          status: 1
+        }
+      ]
+    },
+    {
+      id: 3,
+      parent_id: null,
+      code: 'APPLIANCE',
+      name: '家用电器',
+      sort: 3,
+      description: '空调、冰箱、洗衣机等家电',
+      product_count: 8,
+      status: 1,
+      children: [
+        {
+          id: 31,
+          parent_id: 3,
+          code: 'KITCHEN',
+          name: '厨房电器',
+          sort: 1,
+          description: '微波炉、电饭煲等',
+          product_count: 3,
+          status: 1
+        },
+        {
+          id: 32,
+          parent_id: 3,
+          code: 'LIVING',
+          name: '生活电器',
+          sort: 2,
+          description: '空调、洗衣机等',
+          product_count: 5,
+          status: 1
+        }
+      ]
+    },
+    {
+      id: 4,
+      parent_id: null,
+      code: 'CLOTHING',
+      name: '服装鞋帽',
+      sort: 4,
+      description: '服装、鞋子、帽子等',
+      product_count: 0,
+      status: 0
+    }
+  ]
+
   const stored = localStorage.getItem('wms_categories')
   if (stored) {
     try {
-      return JSON.parse(stored)
+      const parsed = JSON.parse(stored)
+      return Array.isArray(parsed) ? parsed : getDefaultCategories()
     } catch (error) {
       console.error('解析本地存储数据失败:', error)
     }
   }
-  return null
+  
+  const defaultData = getDefaultCategories()
+  localStorage.setItem('wms_categories', JSON.stringify(defaultData))
+  return defaultData
 }
-
-// 保存数据到本地存储
-const saveToStorage = (data) => {
-  try {
-    localStorage.setItem('wms_categories', JSON.stringify(data))
-  } catch (error) {
-    console.error('保存到本地存储失败:', error)
-  }
-}
-
-// 获取默认数据
-const getDefaultCategories = () => [
-  {
-    id: 1,
-    parent_id: null,
-    code: 'ELECTRONICS',
-    name: '手机数码',
-    sort: 1,
-    description: '手机、平板、智能穿戴等数码产品',
-    product_count: 15,
-    status: 1,
-    children: [
-      {
-        id: 11,
-        parent_id: 1,
-        code: 'PHONE',
-        name: '手机',
-        sort: 1,
-        description: '智能手机产品',
-        product_count: 8,
-        status: 1
-      },
-      {
-        id: 12,
-        parent_id: 1,
-        code: 'TABLET',
-        name: '平板电脑',
-        sort: 2,
-        description: '平板电脑产品',
-        product_count: 5,
-        status: 1
-      },
-      {
-        id: 13,
-        parent_id: 1,
-        code: 'WEARABLE',
-        name: '智能穿戴',
-        sort: 3,
-        description: '智能手表、手环等',
-        product_count: 2,
-        status: 1
-      }
-    ]
-  },
-  {
-    id: 2,
-    parent_id: null,
-    code: 'COMPUTER',
-    name: '电脑办公',
-    sort: 2,
-    description: '电脑、办公设备等',
-    product_count: 12,
-    status: 1,
-    children: [
-      {
-        id: 21,
-        parent_id: 2,
-        code: 'LAPTOP',
-        name: '笔记本电脑',
-        sort: 1,
-        description: '笔记本电脑产品',
-        product_count: 6,
-        status: 1
-      },
-      {
-        id: 22,
-        parent_id: 2,
-        code: 'DESKTOP',
-        name: '台式机',
-        sort: 2,
-        description: '台式机产品',
-        product_count: 4,
-        status: 1
-      },
-      {
-        id: 23,
-        parent_id: 2,
-        code: 'OFFICE',
-        name: '办公设备',
-        sort: 3,
-        description: '打印机、投影仪等',
-        product_count: 2,
-        status: 1
-      }
-    ]
-  },
-  {
-    id: 3,
-    parent_id: null,
-    code: 'APPLIANCE',
-    name: '家用电器',
-    sort: 3,
-    description: '空调、冰箱、洗衣机等家电',
-    product_count: 8,
-    status: 1,
-    children: [
-      {
-        id: 31,
-        parent_id: 3,
-        code: 'KITCHEN',
-        name: '厨房电器',
-        sort: 1,
-        description: '微波炉、电饭煲等',
-        product_count: 3,
-        status: 1
-      },
-      {
-        id: 32,
-        parent_id: 3,
-        code: 'LIVING',
-        name: '生活电器',
-        sort: 2,
-        description: '空调、洗衣机等',
-        product_count: 5,
-        status: 1
-      }
-    ]
-  },
-  {
-    id: 4,
-    parent_id: null,
-    code: 'CLOTHING',
-    name: '服装鞋帽',
-    sort: 4,
-    description: '服装、鞋子、帽子等',
-    product_count: 0,
-    status: 0
-  }
-]
 
 // 加载分类列表
 const loadCategories = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 300))
+    console.log('🔄 开始加载分类列表...')
     
-    // 先尝试从本地存储加载，如果没有则使用默认数据
-    let data = loadFromStorage()
-    if (!data || data.length === 0) {
-      data = getDefaultCategories()
-      saveToStorage(data)
+    // 构建查询参数
+    const params = {}
+    if (searchForm.name) params.search = searchForm.name
+    if (searchForm.status !== '') params.status = searchForm.status
+    
+    // 调用API
+    const response = await wmsAPI.getCategories(params)
+    
+    console.log('✅ API响应:', response)
+    
+    // 处理不同的响应格式
+    let categoriesData = []
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        categoriesData = response
+      } else if (response.results && Array.isArray(response.results)) {
+        categoriesData = response.results
+      } else if (response.data && Array.isArray(response.data)) {
+        categoriesData = response.data
+      } else if (response.categories && Array.isArray(response.categories)) {
+        categoriesData = response.categories
+      }
     }
     
-    categories.value = data
+    categories.value = categoriesData
+    
+    console.log('📊 分类数据加载完成:', {
+      total: categories.value.length,
+      hasData: categories.value.length > 0
+    })
     
   } catch (error) {
-    ElMessage.error('加载分类列表失败')
+    console.error('❌ 加载分类列表失败:', error)
+    categories.value = handleAPIFallback(error, '获取分类列表')
+    ElMessage.warning('API连接失败，使用本地数据')
   } finally {
     loading.value = false
   }
@@ -390,11 +412,29 @@ const toggleStatus = async (category) => {
       }
     )
     
-    // 模拟状态切换
-    category.status = category.status === 1 ? 0 : 1
-    // 保存数据到本地存储
-    saveToStorage(categories.value)
-    ElMessage.success(`${action}成功`)
+    const newStatus = category.status === 1 ? 0 : 1
+    
+    try {
+      // 调用API更新状态
+      console.log(`🔄 ${action}分类:`, category.id)
+      await wmsAPI.updateCategory(category.id, { status: newStatus })
+      
+      // 更新本地数据
+      category.status = newStatus
+      console.log(`✅ ${action}成功`)
+      ElMessage.success(`${action}成功`)
+      
+    } catch (error) {
+      console.error(`❌ ${action}失败:`, error)
+      
+      // API失败时的降级处理
+      category.status = newStatus
+      const currentData = [...categories.value]
+      localStorage.setItem('wms_categories', JSON.stringify(currentData))
+      
+      ElMessage.warning(`API连接失败，${action}已保存到本地`)
+    }
+    
   } catch {
     // 用户取消操作
   }
@@ -413,26 +453,42 @@ const deleteCategory = async (category) => {
       }
     )
     
-    // 递归删除函数
-    const removeCategory = (list, targetId) => {
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].id === targetId) {
-          list.splice(i, 1)
-          return true
-        }
-        if (list[i].children && list[i].children.length > 0) {
-          if (removeCategory(list[i].children, targetId)) {
+    try {
+      // 调用API删除
+      console.log('🗑️ 删除分类:', category.id)
+      await wmsAPI.deleteCategory(category.id)
+      
+      console.log('✅ 删除成功，重新加载数据')
+      ElMessage.success('删除成功')
+      
+      // 重新加载数据
+      await loadCategories()
+      
+    } catch (error) {
+      console.error('❌ 删除失败:', error)
+      
+      // API失败时的降级处理
+      const removeCategory = (list, targetId) => {
+        for (let i = 0; i < list.length; i++) {
+          if (list[i].id === targetId) {
+            list.splice(i, 1)
             return true
           }
+          if (list[i].children && list[i].children.length > 0) {
+            if (removeCategory(list[i].children, targetId)) {
+              return true
+            }
+          }
         }
+        return false
       }
-      return false
+      
+      removeCategory(categories.value, category.id)
+      localStorage.setItem('wms_categories', JSON.stringify(categories.value))
+      
+      ElMessage.warning('API连接失败，删除已保存到本地')
     }
     
-    removeCategory(categories.value, category.id)
-    // 保存数据到本地存储
-    saveToStorage(categories.value)
-    ElMessage.success('删除成功')
   } catch {
     // 用户取消操作
   }
@@ -446,49 +502,46 @@ const saveCategory = async () => {
     await formRef.value.validate()
     saving.value = true
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const categoryData = {
+      code: categoryForm.code,
+      name: categoryForm.name,
+      sort: categoryForm.sort || 0,
+      description: categoryForm.description || '',
+      parent_id: categoryForm.parent_id || null
+    }
     
-    // 模拟数据更新
-    if (categoryForm.id) {
-      // 编辑模式 - 递归更新
-      const updateCategory = (list, target) => {
-        for (let item of list) {
-          if (item.id === target.id) {
-            Object.assign(item, target)
-            return true
-          }
-          if (item.children && item.children.length > 0) {
-            if (updateCategory(item.children, target)) {
-              return true
-            }
-          }
-        }
-        return false
+    try {
+      if (categoryForm.id) {
+        // 编辑模式
+        console.log('🔄 更新分类:', categoryForm.id, categoryData)
+        await wmsAPI.updateCategory(categoryForm.id, categoryData)
+        console.log('✅ 更新成功')
+        ElMessage.success('编辑成功')
+      } else {
+        // 添加模式
+        console.log('🔄 创建分类:', categoryData)
+        await wmsAPI.createCategory(categoryData)
+        console.log('✅ 创建成功')
+        ElMessage.success('添加成功')
       }
       
-      updateCategory(categories.value, { ...categoryForm, product_count: 0, status: 1 })
-      ElMessage.success('编辑成功')
-    } else {
-      // 添加模式
-      const newCategory = {
-        ...categoryForm,
-        id: Date.now(),
-        product_count: 0,
-        status: 1
-      }
+      // 重新加载数据
+      await loadCategories()
       
-      if (categoryForm.parent_id) {
-        // 添加子分类
-        const addToParent = (list, parentId, child) => {
+    } catch (error) {
+      console.error('❌ 保存失败:', error)
+      
+      // API失败时的降级处理
+      if (categoryForm.id) {
+        // 编辑模式 - 递归更新
+        const updateCategory = (list, target) => {
           for (let item of list) {
-            if (item.id === parentId) {
-              if (!item.children) item.children = []
-              item.children.push(child)
+            if (item.id === target.id) {
+              Object.assign(item, target)
               return true
             }
             if (item.children && item.children.length > 0) {
-              if (addToParent(item.children, parentId, child)) {
+              if (updateCategory(item.children, target)) {
                 return true
               }
             }
@@ -496,20 +549,51 @@ const saveCategory = async () => {
           return false
         }
         
-        addToParent(categories.value, categoryForm.parent_id, newCategory)
+        updateCategory(categories.value, { ...categoryForm, product_count: 0, status: 1 })
+        ElMessage.warning('API连接失败，编辑已保存到本地')
       } else {
-        // 添加主分类
-        categories.value.push(newCategory)
+        // 添加模式
+        const newCategory = {
+          ...categoryForm,
+          id: Date.now(),
+          product_count: 0,
+          status: 1
+        }
+        
+        if (categoryForm.parent_id) {
+          // 添加子分类
+          const addToParent = (list, parentId, child) => {
+            for (let item of list) {
+              if (item.id === parentId) {
+                if (!item.children) item.children = []
+                item.children.push(child)
+                return true
+              }
+              if (item.children && item.children.length > 0) {
+                if (addToParent(item.children, parentId, child)) {
+                  return true
+                }
+              }
+            }
+            return false
+          }
+          
+          addToParent(categories.value, categoryForm.parent_id, newCategory)
+        } else {
+          // 添加主分类
+          categories.value.push(newCategory)
+        }
+        
+        ElMessage.warning('API连接失败，添加已保存到本地')
       }
       
-      ElMessage.success('添加成功')
+      // 保存到本地存储
+      localStorage.setItem('wms_categories', JSON.stringify(categories.value))
     }
-    
-    // 保存数据到本地存储
-    saveToStorage(categories.value)
     
     dialogVisible.value = false
     resetForm()
+    
   } catch (error) {
     if (error !== false) {
       ElMessage.error('保存失败')

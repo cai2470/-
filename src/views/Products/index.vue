@@ -412,7 +412,7 @@ import { ref, reactive, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Picture, Download, Upload } from '@element-plus/icons-vue'
 import { getAllCategoryOptions } from '@/utils/filterOptions'
-import api from '@/utils/api'
+import wmsAPI from '@/utils/api'
 
 // 响应式数据
 const loading = ref(false)
@@ -486,25 +486,16 @@ const rules = {
   ]
 }
 
-// 从本地存储加载数据
-const loadFromStorage = () => {
-  const stored = localStorage.getItem('wms_products')
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch (error) {
-      console.error('解析本地存储数据失败:', error)
-    }
-  }
-  return null
-}
-
-// 保存数据到本地存储
-const saveToStorage = (data) => {
-  try {
-    localStorage.setItem('wms_products', JSON.stringify(data))
-  } catch (error) {
-    console.error('保存到本地存储失败:', error)
+// API降级处理
+const handleAPIFallback = (error, operation = '操作') => {
+  console.warn(`⚠️ ${operation}API请求失败:`, error.message)
+  
+  if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+    ElMessage.warning(`${operation}失败，使用本地降级方案`)
+    return true
+  } else {
+    ElMessage.error(`${operation}失败，请检查网络连接或联系管理员`)
+    return false
   }
 }
 
@@ -607,28 +598,42 @@ const getDefaultProducts = () => [
 // 加载商品列表
 const loadProducts = async () => {
   loading.value = true
-  try {
-    // 优先使用真实API，失败时降级到本地数据
-    let data = null
-    
     try {
       console.log('🔄 正在从API加载商品列表...')
       
       // 构建搜索参数
       const params = {
         page: pagination.page,
-        pageSize: pagination.size,
+      page_size: pagination.size,
         search: searchForm.name || searchForm.code || '',
         category: searchForm.category
       }
       
-      // 调用真实API
-      const response = await api.getProducts(params)
+    // 调用API获取商品列表
+    const response = await wmsAPI.getProducts(params)
       console.log('✅ API响应成功:', response)
       
-      if (response.success !== false && response.products) {
-        // 转换API数据格式以适配前端
-        data = response.products.map(product => ({
+    let data = []
+    
+    // 处理不同的API响应格式
+    if (response.results && Array.isArray(response.results)) {
+      // DRF标准分页格式
+      data = response.results
+      pagination.total = response.count || 0
+    } else if (response.products && Array.isArray(response.products)) {
+      // 自定义格式
+      data = response.products
+      pagination.total = response.total || data.length
+    } else if (Array.isArray(response)) {
+      // 直接返回数组
+      data = response
+      pagination.total = data.length
+    } else {
+      throw new Error('API返回数据格式不正确')
+    }
+    
+    // 转换API数据格式以适配前端显示
+    products.value = data.map(product => ({
           id: product.id,
           code: product.sku || product.code || `PROD${product.id}`,
           isku: product.isku || `X${String(product.id).padStart(3, '0')}X${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
@@ -639,61 +644,48 @@ const loadProducts = async () => {
           price: parseFloat(product.price || 0),
           stock: parseInt(product.stock || 0),
           min_stock: parseInt(product.min_stock || 10),
-          status: product.status === 'active' ? '正常' : '停用',
+      status: product.status === 'active' ? '正常' : (product.status || '正常'),
           barcode: product.barcode || '',
           description: product.description || '',
           specifications: product.specifications || '',
           image: null,
-          images: product.images || [],
-          attributes: product.attributes || []
-        }))
-        
-        // 更新分页信息
-        pagination.total = response.total || data.length
-        pagination.page = response.page || 1
-        
-        console.log(`✅ 从API加载了 ${data.length} 个商品`)
-        ElMessage.success(`成功加载 ${data.length} 个商品`)
-      } else {
-        throw new Error('API返回数据格式错误')
+      images: Array.isArray(product.images) ? product.images : [],
+      attributes: Array.isArray(product.attributes) ? product.attributes : []
+    }))
+    
+    console.log(`✅ 成功加载 ${products.value.length} 个商品`)
+    
+    if (products.value.length === 0) {
+      ElMessage.info('暂无商品数据')
       }
-    } catch (apiError) {
-      console.warn('⚠️ API请求失败，降级使用本地数据:', apiError.message)
-      ElMessage.warning('API连接失败，使用本地数据')
-      
-      // 降级到本地数据
-      data = loadFromStorage()
+    
+  } catch (error) {
+    console.error('❌ 加载商品列表失败:', error)
+    
+    // 根据环境变量决定是否使用降级方案
+    if (handleAPIFallback(error, '加载商品列表')) {
+      // 使用默认数据作为降级方案
+      products.value = getDefaultProducts()
+      pagination.total = products.value.length
+      ElMessage.info('已加载演示数据')
+    } else {
+      products.value = []
+      pagination.total = 0
     }
-    
-    // 如果本地也没有数据，使用默认数据
-    if (!data || data.length === 0) {
-      console.log('📝 使用默认商品数据')
-      data = getDefaultProducts()
-      saveToStorage(data)
-      ElMessage.info('已加载默认商品数据')
-    }
-    
-    products.value = data
-    
+  } finally {
     // 如果没有从API获取到总数，使用当前数据长度
     if (!pagination.total) {
-      pagination.total = data.length
+      pagination.total = products.value.length
     }
+    
+    console.log('商品数据加载完成:', {
+      total: products.value.length,
+      dataType: Array.isArray(products.value) ? '✓ 数组' : '✗ 非数组'
+    })
     
     // 动态提取分类选项
     loadAvailableCategories()
     
-  } catch (error) {
-    console.error('❌ 加载商品列表失败:', error)
-    ElMessage.error('加载商品列表失败，使用默认数据')
-    
-    // 使用默认数据作为最后的后备
-    const defaultData = getDefaultProducts()
-    products.value = defaultData
-    pagination.total = defaultData.length
-    saveToStorage(defaultData)
-    loadAvailableCategories()
-  } finally {
     loading.value = false
   }
 }
@@ -976,7 +968,7 @@ const viewStock = (product) => {
 const deleteProduct = async (product) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除商品 "${product.name}" 吗？`,
+      `确定要删除商品 "${product.name}" 吗？删除后将无法恢复。`,
       '删除确认',
       {
         confirmButtonText: '确定',
@@ -985,17 +977,30 @@ const deleteProduct = async (product) => {
       }
     )
     
-    // 模拟删除操作
+    // 调用API删除商品
+    await wmsAPI.deleteProduct(product.id)
+    
+    ElMessage.success('商品删除成功')
+    
+    // 重新加载商品列表
+    await loadProducts()
+    
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除商品失败:', error)
+      
+      // API失败时的降级处理
+      if (handleAPIFallback(error, '删除商品')) {
+        // 降级方案：从本地数据删除
     const index = products.value.findIndex(p => p.id === product.id)
     if (index !== -1) {
       products.value.splice(index, 1)
       pagination.total = products.value.length
-      // 保存数据到本地存储
-      saveToStorage(products.value)
-      ElMessage.success('删除成功')
+          ElMessage.success('删除成功（演示模式）')
     }
-  } catch {
-    // 用户取消删除
+      }
+    }
+    // 用户取消删除时不处理
   }
 }
 
@@ -1007,10 +1012,44 @@ const saveProduct = async () => {
     await formRef.value.validate()
     saving.value = true
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
     // 处理图片数据
+    const processedImages = productForm.images.map(img => ({
+      name: img.name,
+      url: img.url || img.response?.url || ''
+    }))
+    
+    const productData = {
+      ...productForm,
+      images: processedImages,
+      image: processedImages.length > 0 ? processedImages[0].url : null,
+      status: productForm.id ? undefined : 'active' // 新商品默认激活状态
+    }
+    
+    // 调用API
+    let response
+    if (productForm.id) {
+      // 编辑模式 - 调用更新API
+      response = await wmsAPI.updateProduct(productForm.id, productData)
+      ElMessage.success('商品编辑成功')
+    } else {
+      // 添加模式 - 调用创建API
+      response = await wmsAPI.createProduct(productData)
+      ElMessage.success('商品添加成功')
+    }
+    
+    dialogVisible.value = false
+    resetForm()
+    
+    // 重新加载商品列表
+    await loadProducts()
+    
+  } catch (error) {
+    console.error('保存商品失败:', error)
+    
+    if (error !== false) {
+      // API失败时的降级处理
+      if (handleAPIFallback(error, '保存商品')) {
+        // 降级方案：使用本地数据模拟
     const processedImages = productForm.images.map(img => ({
       name: img.name,
       url: img.url || img.response?.url || ''
@@ -1022,7 +1061,6 @@ const saveProduct = async () => {
       image: processedImages.length > 0 ? processedImages[0].url : null
     }
     
-    // 模拟数据更新
     if (productForm.id) {
       // 编辑模式
       const index = products.value.findIndex(p => p.id === productForm.id)
@@ -1033,7 +1071,7 @@ const saveProduct = async () => {
           status: products.value[index].status 
         }
       }
-      ElMessage.success('编辑成功')
+          ElMessage.success('编辑成功（演示模式）')
     } else {
       // 添加模式
       const newProduct = {
@@ -1045,17 +1083,12 @@ const saveProduct = async () => {
       }
       products.value.unshift(newProduct)
       pagination.total = products.value.length
-      ElMessage.success('添加成功')
+          ElMessage.success('添加成功（演示模式）')
     }
-    
-    // 保存数据到本地存储
-    saveToStorage(products.value)
     
     dialogVisible.value = false
     resetForm()
-  } catch (error) {
-    if (error !== false) {
-      ElMessage.error('保存失败')
+      }
     }
   } finally {
     saving.value = false

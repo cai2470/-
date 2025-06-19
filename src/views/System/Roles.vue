@@ -213,7 +213,8 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, User, Setting, Document, Warehouse, Box } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
+import { Plus, User, Setting, Document, House, Box } from '@element-plus/icons-vue'
 import { roleApi, permissionApi } from '@/api'
 import { formatDateTime } from '@/utils'
 
@@ -364,7 +365,7 @@ const getModuleName = (app, model) => {
 const getModuleIcon = (app) => {
   const icons = {
     'users': User,
-    'warehouse': Warehouse,
+    'warehouse': House,
     'products': Box,
     'inventory': Document,
     'inbound': Document,

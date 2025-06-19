@@ -193,6 +193,7 @@ import {
   Van, 
   Check 
 } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 import OutboundOrders from './components/OutboundOrders.vue'
 import PreDelivery from './components/PreDelivery.vue'
 import PickingGoods from './components/PickingGoods.vue'

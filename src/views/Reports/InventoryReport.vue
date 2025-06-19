@@ -314,6 +314,7 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getWarehouseOptions, getAllCategoryOptions, getStockStatusOptions } from '@/utils/filterOptions'
+import { wmsAPI } from '@/utils/api.js'
 import * as echarts from 'echarts'
 
 // 响应式数据

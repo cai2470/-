@@ -193,7 +193,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import { getStatusOptions, getWarehouseTypeOptions } from '@/utils/filterOptions'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -256,6 +258,24 @@ const rules = {
   ]
 }
 
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 从本地存储加载数据
+  const stored = localStorage.getItem('wms_warehouses')
+  if (stored) {
+    try {
+      const data = JSON.parse(stored)
+      return Array.isArray(data) ? data : []
+    } catch (parseError) {
+      console.error('解析本地存储数据失败:', parseError)
+      return []
+    }
+  }
+  return []
+}
+
 // 从本地存储加载数据
 const loadFromStorage = () => {
   const stored = localStorage.getItem('wms_warehouses')
@@ -282,27 +302,59 @@ const saveToStorage = (data) => {
 const loadWarehouses = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // 构建查询参数
+    const params = {}
+    if (searchForm.name) params.name = searchForm.name
+    if (searchForm.code) params.code = searchForm.code
+    if (searchForm.status !== '') params.status = searchForm.status
     
-    // 从本地存储加载数据
-    let data = loadFromStorage()
+    // 尝试API调用
+    const response = await wmsAPI.getWarehouses(params)
     
-    // 如果没有数据，初始化为空数组，不再自动填充默认数据
-    if (!data) {
-      data = []
-      saveToStorage(data)
+    // 处理不同的响应格式
+    let data = []
+    if (Array.isArray(response)) {
+      data = response
+    } else if (response && Array.isArray(response.results)) {
+      data = response.results
+    } else if (response && Array.isArray(response.data)) {
+      data = response.data
+    } else if (response && Array.isArray(response.warehouses)) {
+      data = response.warehouses
     }
     
-    console.log('=== 仓库管理数据加载 ===')
-    console.log('加载的仓库数据:', data)
+    // 确保数据格式正确
+    warehouses.value = data.map(warehouse => ({
+      id: warehouse.id,
+      code: warehouse.code || '',
+      name: warehouse.name || '',
+      type: warehouse.type || '',
+      manager: warehouse.manager || '',
+      phone: warehouse.phone || '',
+      address: warehouse.address || '',
+      area: warehouse.area || 0,
+      zone_count: warehouse.zone_count || 0,
+      status: warehouse.status || 1,
+      remark: warehouse.remark || ''
+    }))
     
-    warehouses.value = data
-    pagination.total = data.length
+    pagination.total = warehouses.value.length
+    
+    console.log('✓ API调用成功，加载仓库数据:', warehouses.value.length, '条')
     
   } catch (error) {
-    console.error('加载仓库列表失败:', error)
-    ElMessage.error('加载仓库列表失败')
+    console.error('仓库列表API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取仓库列表')
+    warehouses.value = Array.isArray(fallbackData) ? fallbackData : []
+    pagination.total = warehouses.value.length
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
   } finally {
     loading.value = false
   }
@@ -363,14 +415,32 @@ const deleteWarehouse = async (warehouse) => {
       }
     )
     
-    // 模拟删除操作
-    const index = warehouses.value.findIndex(w => w.id === warehouse.id)
-    if (index !== -1) {
-      warehouses.value.splice(index, 1)
-      pagination.total = warehouses.value.length
-      // 保存数据到本地存储
-      saveToStorage(warehouses.value)
+    try {
+      // 尝试API删除
+      await wmsAPI.deleteWarehouse(warehouse.id)
+      
+      // API成功后更新本地数据
+      const index = warehouses.value.findIndex(w => w.id === warehouse.id)
+      if (index !== -1) {
+        warehouses.value.splice(index, 1)
+        pagination.total = warehouses.value.length
+        saveToStorage(warehouses.value)
+      }
+      
       ElMessage.success('删除成功')
+      console.log('✓ API删除仓库成功:', warehouse.name)
+      
+    } catch (apiError) {
+      console.error('API删除失败，使用本地删除:', apiError)
+      
+      // API失败时进行本地删除
+      const index = warehouses.value.findIndex(w => w.id === warehouse.id)
+      if (index !== -1) {
+        warehouses.value.splice(index, 1)
+        pagination.total = warehouses.value.length
+        saveToStorage(warehouses.value)
+        ElMessage.success('删除成功（本地模式）')
+      }
     }
   } catch {
     // 用户取消操作
@@ -391,11 +461,26 @@ const toggleStatus = async (warehouse) => {
       }
     )
     
-    // 模拟状态切换
-    warehouse.status = warehouse.status === 1 ? 0 : 1
-    // 保存数据到本地存储
-    saveToStorage(warehouses.value)
-    ElMessage.success(`${action}成功`)
+    const newStatus = warehouse.status === 1 ? 0 : 1
+    
+    try {
+      // 尝试API更新
+      await wmsAPI.updateWarehouse(warehouse.id, { status: newStatus })
+      
+      // API成功后更新本地数据
+      warehouse.status = newStatus
+      saveToStorage(warehouses.value)
+      ElMessage.success(`${action}成功`)
+      console.log('✓ API更新仓库状态成功:', warehouse.name)
+      
+    } catch (apiError) {
+      console.error('API状态更新失败，使用本地更新:', apiError)
+      
+      // API失败时进行本地更新
+      warehouse.status = newStatus
+      saveToStorage(warehouses.value)
+      ElMessage.success(`${action}成功（本地模式）`)
+    }
   } catch {
     // 用户取消操作
   }
@@ -409,32 +494,73 @@ const saveWarehouse = async () => {
     await formRef.value.validate()
     saving.value = true
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // 模拟数据更新
-    if (warehouseForm.id) {
-      // 编辑模式
-      const index = warehouses.value.findIndex(w => w.id === warehouseForm.id)
-      if (index !== -1) {
-        warehouses.value[index] = { ...warehouseForm, zone_count: warehouses.value[index].zone_count, status: warehouses.value[index].status }
+    try {
+      let result
+      if (warehouseForm.id) {
+        // 编辑模式 - API调用
+        result = await wmsAPI.updateWarehouse(warehouseForm.id, warehouseForm)
+        
+        // API成功后更新本地数据
+        const index = warehouses.value.findIndex(w => w.id === warehouseForm.id)
+        if (index !== -1) {
+          warehouses.value[index] = { 
+            ...warehouseForm, 
+            zone_count: warehouses.value[index].zone_count, 
+            status: warehouses.value[index].status 
+          }
+        }
+        ElMessage.success('编辑成功')
+        console.log('✓ API更新仓库成功:', warehouseForm.name)
+      } else {
+        // 添加模式 - API调用
+        result = await wmsAPI.createWarehouse(warehouseForm)
+        
+        // API成功后添加到本地数据
+        const newWarehouse = {
+          ...warehouseForm,
+          id: result.id || Date.now(),
+          zone_count: 0,
+          status: 1
+        }
+        warehouses.value.unshift(newWarehouse)
+        pagination.total = warehouses.value.length
+        ElMessage.success('添加成功')
+        console.log('✓ API创建仓库成功:', warehouseForm.name)
       }
-      ElMessage.success('编辑成功')
-    } else {
-      // 添加模式
-      const newWarehouse = {
-        ...warehouseForm,
-        id: Date.now(), // 使用时间戳作为ID
-        zone_count: 0,
-        status: 1
+      
+      // 保存数据到本地存储
+      saveToStorage(warehouses.value)
+      
+    } catch (apiError) {
+      console.error('API保存失败，使用本地保存:', apiError)
+      
+      // API失败时的本地保存
+      if (warehouseForm.id) {
+        // 编辑模式
+        const index = warehouses.value.findIndex(w => w.id === warehouseForm.id)
+        if (index !== -1) {
+          warehouses.value[index] = { 
+            ...warehouseForm, 
+            zone_count: warehouses.value[index].zone_count, 
+            status: warehouses.value[index].status 
+          }
+        }
+        ElMessage.success('编辑成功（本地模式）')
+      } else {
+        // 添加模式
+        const newWarehouse = {
+          ...warehouseForm,
+          id: Date.now(),
+          zone_count: 0,
+          status: 1
+        }
+        warehouses.value.unshift(newWarehouse)
+        pagination.total = warehouses.value.length
+        ElMessage.success('添加成功（本地模式）')
       }
-      warehouses.value.unshift(newWarehouse)
-      pagination.total = warehouses.value.length
-      ElMessage.success('添加成功')
+      
+      saveToStorage(warehouses.value)
     }
-    
-    // 保存数据到本地存储
-    saveToStorage(warehouses.value)
     
     dialogVisible.value = false
     resetForm()

@@ -267,6 +267,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, Upload } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -335,29 +336,11 @@ const rules = {
   ]
 }
 
-// 从本地存储加载数据
-const loadFromStorage = () => {
-  const stored = localStorage.getItem('wms_suppliers')
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch (error) {
-      console.error('解析本地存储数据失败:', error)
-    }
-  }
-  return null
-}
-
-// 保存数据到本地存储
-const saveToStorage = (data) => {
-  try {
-    localStorage.setItem('wms_suppliers', JSON.stringify(data))
-  } catch (error) {
-    console.error('保存到本地存储失败:', error)
-  }
-}
-
-// 获取默认数据
+// API错误降级处理
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 获取本地存储默认数据
 const getDefaultSuppliers = () => [
   {
     id: 1,
@@ -426,25 +409,76 @@ const getDefaultSuppliers = () => [
   }
 ]
 
+  const stored = localStorage.getItem('wms_suppliers')
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored)
+      return Array.isArray(parsed) ? parsed : getDefaultSuppliers()
+    } catch (error) {
+      console.error('解析本地存储数据失败:', error)
+    }
+  }
+  
+  const defaultData = getDefaultSuppliers()
+  localStorage.setItem('wms_suppliers', JSON.stringify(defaultData))
+  return defaultData
+}
+
 // 加载供应商列表
 const loadSuppliers = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 300))
+    console.log('🔄 开始加载供应商列表...')
     
-    // 先尝试从本地存储加载，如果没有则使用默认数据
-    let data = loadFromStorage()
-    if (!data || data.length === 0) {
-      data = getDefaultSuppliers()
-      saveToStorage(data)
+    // 构建查询参数
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size
+    }
+    if (searchForm.name) params.search = searchForm.name
+    if (searchForm.contact) params.contact = searchForm.contact
+    if (searchForm.status !== '') params.status = searchForm.status
+    
+    // 调用API
+    const response = await wmsAPI.getSuppliers(params)
+    
+    console.log('✅ API响应:', response)
+    
+    // 处理不同的响应格式
+    let suppliersData = []
+    let total = 0
+    
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        suppliersData = response
+        total = response.length
+      } else if (response.results && Array.isArray(response.results)) {
+        // DRF标准分页格式
+        suppliersData = response.results
+        total = response.count || response.results.length
+      } else if (response.data && Array.isArray(response.data)) {
+        suppliersData = response.data
+        total = response.total || response.data.length
+      } else if (response.suppliers && Array.isArray(response.suppliers)) {
+        suppliersData = response.suppliers
+        total = response.total || response.suppliers.length
+      }
     }
     
-    suppliers.value = data
-    pagination.total = data.length
+    suppliers.value = suppliersData
+    pagination.total = total
+    
+    console.log('📊 供应商数据加载完成:', {
+      total: suppliers.value.length,
+      pagination: pagination.total
+    })
     
   } catch (error) {
-    ElMessage.error('加载供应商列表失败')
+    console.error('❌ 加载供应商列表失败:', error)
+    const fallbackData = handleAPIFallback(error, '获取供应商列表')
+    suppliers.value = fallbackData
+    pagination.total = fallbackData.length
+    ElMessage.warning('API连接失败，使用本地数据')
   } finally {
     loading.value = false
   }
@@ -497,11 +531,29 @@ const toggleStatus = async (supplier) => {
       }
     )
     
-    // 模拟状态切换
-    supplier.status = supplier.status === 1 ? 0 : 1
-    // 保存数据到本地存储
-    saveToStorage(suppliers.value)
+    const newStatus = supplier.status === 1 ? 0 : 1
+    
+    try {
+      // 调用API更新状态
+      console.log(`🔄 ${action}供应商:`, supplier.id)
+      await wmsAPI.updateSupplier(supplier.id, { status: newStatus })
+      
+      // 更新本地数据
+      supplier.status = newStatus
+      console.log(`✅ ${action}成功`)
     ElMessage.success(`${action}成功`)
+      
+    } catch (error) {
+      console.error(`❌ ${action}失败:`, error)
+      
+      // API失败时的降级处理
+      supplier.status = newStatus
+      const currentData = [...suppliers.value]
+      localStorage.setItem('wms_suppliers', JSON.stringify(currentData))
+      
+      ElMessage.warning(`API连接失败，${action}已保存到本地`)
+    }
+    
   } catch {
     // 用户取消操作
   }
@@ -520,15 +572,30 @@ const deleteSupplier = async (supplier) => {
       }
     )
     
-    // 模拟删除操作
+    try {
+      // 调用API删除
+      console.log('🗑️ 删除供应商:', supplier.id)
+      await wmsAPI.deleteSupplier(supplier.id)
+      
+      console.log('✅ 删除成功，重新加载数据')
+      ElMessage.success('删除成功')
+      
+      // 重新加载数据
+      await loadSuppliers()
+      
+    } catch (error) {
+      console.error('❌ 删除失败:', error)
+      
+      // API失败时的降级处理
     const index = suppliers.value.findIndex(s => s.id === supplier.id)
     if (index !== -1) {
       suppliers.value.splice(index, 1)
       pagination.total = suppliers.value.length
-      // 保存数据到本地存储
-      saveToStorage(suppliers.value)
-      ElMessage.success('删除成功')
+        localStorage.setItem('wms_suppliers', JSON.stringify(suppliers.value))
+        ElMessage.warning('API连接失败，删除已保存到本地')
     }
+    }
+    
   } catch {
     // 用户取消操作
   }
@@ -542,17 +609,47 @@ const saveSupplier = async () => {
     await formRef.value.validate()
     saving.value = true
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    const supplierData = {
+      code: supplierForm.code,
+      name: supplierForm.name,
+      contact: supplierForm.contact,
+      phone: supplierForm.phone,
+      email: supplierForm.email || '',
+      address: supplierForm.address,
+      credit_rating: supplierForm.credit_rating || 3,
+      cooperation_type: supplierForm.cooperation_type || '长期合作',
+      remark: supplierForm.remark || ''
+    }
     
-    // 模拟数据更新
+    try {
+      if (supplierForm.id) {
+        // 编辑模式
+        console.log('🔄 更新供应商:', supplierForm.id, supplierData)
+        await wmsAPI.updateSupplier(supplierForm.id, supplierData)
+        console.log('✅ 更新成功')
+        ElMessage.success('编辑成功')
+      } else {
+        // 添加模式
+        console.log('🔄 创建供应商:', supplierData)
+        await wmsAPI.createSupplier(supplierData)
+        console.log('✅ 创建成功')
+        ElMessage.success('添加成功')
+      }
+      
+      // 重新加载数据
+      await loadSuppliers()
+      
+    } catch (error) {
+      console.error('❌ 保存失败:', error)
+      
+      // API失败时的降级处理
     if (supplierForm.id) {
       // 编辑模式
       const index = suppliers.value.findIndex(s => s.id === supplierForm.id)
       if (index !== -1) {
         suppliers.value[index] = { ...supplierForm, status: suppliers.value[index].status }
       }
-      ElMessage.success('编辑成功')
+        ElMessage.warning('API连接失败，编辑已保存到本地')
     } else {
       // 添加模式
       const newSupplier = {
@@ -562,14 +659,16 @@ const saveSupplier = async () => {
       }
       suppliers.value.unshift(newSupplier)
       pagination.total = suppliers.value.length
-      ElMessage.success('添加成功')
+        ElMessage.warning('API连接失败，添加已保存到本地')
     }
     
-    // 保存数据到本地存储
-    saveToStorage(suppliers.value)
+      // 保存到本地存储
+      localStorage.setItem('wms_suppliers', JSON.stringify(suppliers.value))
+    }
     
     dialogVisible.value = false
     resetForm()
+    
   } catch (error) {
     if (error !== false) {
       ElMessage.error('保存失败')

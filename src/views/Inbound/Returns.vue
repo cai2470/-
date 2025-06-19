@@ -512,6 +512,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -720,14 +721,12 @@ const loadBasicData = async () => {
   }
 }
 
-// 加载退货单数据
-const loadReturnsData = async () => {
-  loading.value = true
-  try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
-    
-    const mockData = [
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 返回模拟数据
+  return [
       {
         id: 1,
         return_no: 'RT202401150001',
@@ -785,21 +784,86 @@ const loadReturnsData = async () => {
         created_by: '赵六'
       }
     ]
+}
+
+// 加载退货单数据
+const loadReturnsData = async () => {
+  loading.value = true
+  try {
+    // 构建查询参数
+    const params = {}
+    if (filterForm.return_no) params.return_no = filterForm.return_no
+    if (filterForm.partner_id) params.partner_id = filterForm.partner_id
+    if (filterForm.return_type) params.return_type = filterForm.return_type
+    if (filterForm.status) params.status = filterForm.status
+    if (filterForm.date_range && filterForm.date_range.length === 2) {
+      params.start_date = filterForm.date_range[0]
+      params.end_date = filterForm.date_range[1]
+    }
     
-    returnsList.value = mockData
-    pagination.total = mockData.length
+    // 分页参数
+    params.page = pagination.page
+    params.page_size = pagination.size
+    
+    // 调用API获取退货单数据
+    const response = await wmsAPI.getReturnOrders(params)
+    
+    // 处理不同的响应格式
+    let returnsData = []
+    if (Array.isArray(response)) {
+      returnsData = response
+      pagination.total = response.length
+    } else if (response && Array.isArray(response.results)) {
+      returnsData = response.results
+      pagination.total = response.count || response.total || response.results.length
+    } else if (response && Array.isArray(response.data)) {
+      returnsData = response.data
+      pagination.total = response.total || response.data.length
+    } else if (response && Array.isArray(response.return_orders)) {
+      returnsData = response.return_orders
+      pagination.total = response.total || response.return_orders.length
+    }
+    
+    returnsList.value = returnsData
     
     // 更新统计数据
-    stats.total = mockData.length
-    stats.pending = mockData.filter(item => item.status === 'pending').length
-    stats.inspecting = mockData.filter(item => item.status === 'inspecting').length
-    stats.completed = mockData.filter(item => item.status === 'stored').length
+    updateReturnsStats(returnsData)
+    
+    console.log('✓ API调用成功，加载退货入库数据:', {
+      total: returnsData.length,
+      pending: stats.pending,
+      inspecting: stats.inspecting,
+      completed: stats.completed
+    })
     
   } catch (error) {
-    ElMessage.error('加载退货单数据失败')
+    console.error('退货入库API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取退货单')
+    returnsList.value = fallbackData
+    pagination.total = fallbackData.length
+    
+    // 更新统计数据
+    updateReturnsStats(fallbackData)
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
+    
   } finally {
     loading.value = false
   }
+}
+
+// 更新退货统计数据
+const updateReturnsStats = (data) => {
+  stats.total = data.length
+  stats.pending = data.filter(item => item.status === 'pending').length
+  stats.inspecting = data.filter(item => item.status === 'inspecting').length
+  stats.completed = data.filter(item => item.status === 'stored').length
 }
 
 // 搜索

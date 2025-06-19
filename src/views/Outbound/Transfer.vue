@@ -550,6 +550,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 import { 
   Plus, 
   Search, 

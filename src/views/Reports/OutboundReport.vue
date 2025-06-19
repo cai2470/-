@@ -247,6 +247,7 @@ import { ElMessage } from 'element-plus'
 import {
   Refresh, Download, Document, Box, Money, Timer
 } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -320,16 +321,40 @@ const getPerformanceLevel = (score) => {
 // 加载基础数据
 const loadBasicData = async () => {
   try {
-    // 加载仓库数据
-    const warehouseData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-    warehouses.value = warehouseData.filter(w => w.status === 1 || w.status === '启用').map(w => ({
+    // 安全地加载仓库数据
+    const warehouseStored = localStorage.getItem('wms_warehouses')
+    let warehouseData = []
+    
+    if (warehouseStored) {
+      try {
+        const parsed = JSON.parse(warehouseStored)
+        warehouseData = Array.isArray(parsed) ? parsed : []
+      } catch (error) {
+        console.warn('仓库数据解析失败:', error)
+        warehouseData = []
+      }
+    }
+    
+    warehouses.value = warehouseData.filter(w => w && (w.status === 1 || w.status === '启用')).map(w => ({
       id: w.id,
       name: w.name,
       code: w.code
     }))
 
-    // 加载客户数据
-    const customerData = JSON.parse(localStorage.getItem('wms_customers') || '[]')
+    // 安全地加载客户数据
+    const customerStored = localStorage.getItem('wms_customers')
+    let customerData = []
+    
+    if (customerStored) {
+      try {
+        const parsed = JSON.parse(customerStored)
+        customerData = Array.isArray(parsed) ? parsed : []
+      } catch (error) {
+        console.warn('客户数据解析失败:', error)
+        customerData = []
+      }
+    }
+    
     customers.value = customerData.map(c => ({
       id: c.id,
       name: c.name,

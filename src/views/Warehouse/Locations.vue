@@ -4,7 +4,7 @@
       <h1>库位管理</h1>
       <div class="header-actions">
         <el-button type="success" @click="batchGenerate">
-          <el-icon><Magic /></el-icon>
+          <el-icon><Tools /></el-icon>
           批量生成
         </el-button>
         <el-button type="primary" @click="openAddDialog">
@@ -440,6 +440,16 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { 
+  Plus, 
+  Tools, 
+  Grid, 
+  Check, 
+  Box, 
+  Close, 
+  Delete 
+} from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -586,37 +596,133 @@ const getStatusText = (status) => {
   return textMap[status] || '未知'
 }
 
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 从本地存储加载数据
+  const stored = localStorage.getItem('wms_locations')
+  if (stored) {
+    try {
+      const data = JSON.parse(stored)
+      return Array.isArray(data) ? data : []
+    } catch (parseError) {
+      console.error('解析本地存储数据失败:', parseError)
+      return []
+    }
+  }
+  return []
+}
+
 // 加载基础数据
 const loadBasicData = async () => {
   try {
+    // 加载仓库数据
+    try {
+      const response = await wmsAPI.getWarehouses({ status: 1 })
+      
+      // 处理不同的响应格式
+      let warehouseData = []
+      if (Array.isArray(response)) {
+        warehouseData = response
+      } else if (response && Array.isArray(response.results)) {
+        warehouseData = response.results
+      } else if (response && Array.isArray(response.data)) {
+        warehouseData = response.data
+      } else if (response && Array.isArray(response.warehouses)) {
+        warehouseData = response.warehouses
+      }
+      
+      warehouses.value = warehouseData
+        .filter(w => w && w.status === 1)
+        .map(w => ({
+          id: w.id,
+          name: w.name || '未知仓库',
+          code: w.code || 'UNKNOWN'
+        }))
+        
+      console.log('✓ API加载仓库数据成功:', warehouses.value.length, '个')
+    } catch (warehouseError) {
+      console.error('API加载仓库数据失败，使用降级:', warehouseError)
+      
     // 从localStorage加载仓库数据
-    const storedWarehouses = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+      try {
+        const warehouseData = localStorage.getItem('wms_warehouses')
+        if (warehouseData) {
+          const parsedData = JSON.parse(warehouseData)
+          const storedWarehouses = Array.isArray(parsedData) ? parsedData : []
+          
     if (storedWarehouses.length > 0) {
-      warehouses.value = storedWarehouses.filter(w => w.status === 1).map(w => ({
+            warehouses.value = storedWarehouses
+              .filter(w => w && w.status === 1)
+              .map(w => ({
         id: w.id,
-        name: w.name,
-        code: w.code
+                name: w.name || '未知仓库',
+                code: w.code || 'UNKNOWN'
       }))
     } else {
-      // 仓库列表默认数据
       warehouses.value = [
         { id: 1, name: '主仓库', code: 'WH001' },
         { id: 2, name: '北京仓库', code: 'WH002' },
         { id: 3, name: '上海仓库', code: 'WH003' }
       ]
     }
+        }
+      } catch (parseError) {
+        console.error('解析仓库数据失败:', parseError)
+        warehouses.value = [
+          { id: 1, name: '主仓库', code: 'WH001' },
+          { id: 2, name: '北京仓库', code: 'WH002' }
+        ]
+      }
+    }
+    
+    // 加载库区数据
+    try {
+      const response = await wmsAPI.getZones({ status: 1 })
+      
+      // 处理不同的响应格式
+      let zoneData = []
+      if (Array.isArray(response)) {
+        zoneData = response
+      } else if (response && Array.isArray(response.results)) {
+        zoneData = response.results
+      } else if (response && Array.isArray(response.data)) {
+        zoneData = response.data
+      } else if (response && Array.isArray(response.zones)) {
+        zoneData = response.zones
+      }
+      
+      zones.value = zoneData
+        .filter(z => z && z.status === 1)
+        .map(z => ({
+          id: z.id,
+          warehouse_id: z.warehouse_id,
+          name: z.name || '未知库区',
+          code: z.code || 'UNKNOWN'
+        }))
+        
+      console.log('✓ API加载库区数据成功:', zones.value.length, '个')
+    } catch (zoneError) {
+      console.error('API加载库区数据失败，使用降级:', zoneError)
     
     // 从localStorage加载库区数据
-    const storedZones = JSON.parse(localStorage.getItem('wms_zones') || '[]')
+      try {
+        const zoneData = localStorage.getItem('wms_zones')
+        if (zoneData) {
+          const parsedData = JSON.parse(zoneData)
+          const storedZones = Array.isArray(parsedData) ? parsedData : []
+          
     if (storedZones.length > 0) {
-      zones.value = storedZones.filter(z => z.status === 1).map(z => ({
+            zones.value = storedZones
+              .filter(z => z && z.status === 1)
+              .map(z => ({
         id: z.id,
         warehouse_id: z.warehouse_id,
-        name: z.name,
-        code: z.code
+                name: z.name || '未知库区',
+                code: z.code || 'UNKNOWN'
       }))
     } else {
-      // 库区列表默认数据
       zones.value = [
         { id: 1, warehouse_id: 1, name: 'A区', code: 'A001' },
         { id: 2, warehouse_id: 1, name: 'B区', code: 'B001' },
@@ -625,8 +731,32 @@ const loadBasicData = async () => {
         { id: 5, warehouse_id: 3, name: 'A区', code: 'A001' }
       ]
     }
+        }
+      } catch (parseError) {
+        console.error('解析库区数据失败:', parseError)
+        zones.value = [
+          { id: 1, warehouse_id: 1, name: 'A区', code: 'A001' },
+          { id: 2, warehouse_id: 1, name: 'B区', code: 'B001' }
+        ]
+      }
+    }
+    
+    console.log('基础数据加载完成:', {
+      warehouses: warehouses.value.length,
+      zones: zones.value.length
+    })
   } catch (error) {
+    console.error('加载基础数据失败:', error)
     ElMessage.error('加载基础数据失败')
+    // 设置默认数据
+    warehouses.value = [
+      { id: 1, name: '主仓库', code: 'WH001' },
+      { id: 2, name: '北京仓库', code: 'WH002' }
+    ]
+    zones.value = [
+      { id: 1, warehouse_id: 1, name: 'A区', code: 'A001' },
+      { id: 2, warehouse_id: 1, name: 'B区', code: 'B001' }
+    ]
   }
 }
 
@@ -634,13 +764,67 @@ const loadBasicData = async () => {
 const loadLocations = async () => {
   loading.value = true
   try {
-    // 从localStorage加载实际库位数据
-    const storedLocations = JSON.parse(localStorage.getItem('wms_locations') || '[]')
+    // 构建查询参数
+    const params = {}
+    if (searchForm.warehouse_id) params.warehouse_id = searchForm.warehouse_id
+    if (searchForm.zone_id) params.zone_id = searchForm.zone_id
+    if (searchForm.code) params.code = searchForm.code
+    if (searchForm.status) params.status = searchForm.status
     
-    if (storedLocations.length > 0) {
-      // 使用实际存储的库位数据
-      locations.value = storedLocations.map(loc => {
-        // 获取仓库和库区名称
+    // 尝试API调用
+    const response = await wmsAPI.getLocations(params)
+    
+    // 处理不同的响应格式
+    let data = []
+    if (Array.isArray(response)) {
+      data = response
+    } else if (response && Array.isArray(response.results)) {
+      data = response.results
+    } else if (response && Array.isArray(response.data)) {
+      data = response.data
+    } else if (response && Array.isArray(response.locations)) {
+      data = response.locations
+    }
+    
+    // 确保数据格式正确并添加仓库、库区名称
+    locations.value = data.map(loc => {
+      const warehouse = warehouses.value.find(w => w.id === loc.warehouse_id)
+      const zone = zones.value.find(z => z.id === loc.zone_id)
+      
+      return {
+        id: loc.id,
+        code: loc.code || '',
+        warehouse_id: loc.warehouse_id,
+        zone_id: loc.zone_id,
+        warehouse_name: warehouse?.name || loc.warehouse_name || '未知仓库',
+        zone_name: zone?.name || loc.zone_name || '未知库区',
+        type: loc.type || '',
+        row_no: loc.row_no || 1,
+        column_no: loc.column_no || 1,
+        level_no: loc.level_no || 1,
+        max_weight: loc.max_weight || 0,
+        max_volume: loc.max_volume || 0,
+        current_product: loc.current_product || '',
+        status: loc.status || 'empty',
+        remark: loc.remark || ''
+      }
+    })
+    
+    pagination.total = locations.value.length
+    
+    // 更新统计数据
+    updateLocationStats()
+    
+    console.log('✓ API调用成功，加载库位数据:', locations.value.length, '条')
+    
+  } catch (error) {
+    console.error('库位列表API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取库位列表')
+    
+    // 处理降级数据并添加仓库、库区名称
+    locations.value = fallbackData.map(loc => {
         const warehouse = warehouses.value.find(w => w.id === loc.warehouse_id)
         const zone = zones.value.find(z => z.id === loc.zone_id)
         
@@ -650,33 +834,35 @@ const loadLocations = async () => {
           zone_name: zone?.name || loc.zone_name || '未知库区'
         }
       })
-    } else {
-      // 如果没有存储数据，使用空数组
-      locations.value = []
-      console.log('没有找到库位数据，显示空列表')
-    }
     
     pagination.total = locations.value.length
     
     // 更新统计数据
+    updateLocationStats()
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// 更新库位统计数据
+const updateLocationStats = () => {
     locationStats.total = locations.value.length
     locationStats.empty = locations.value.filter(item => item.status === 'empty').length
     locationStats.occupied = locations.value.filter(item => item.status === 'occupied').length
     locationStats.disabled = locations.value.filter(item => item.status === 'disabled').length
     
-    console.log('加载库位数据完成:', {
+  console.log('库位统计数据:', {
       total: locationStats.total,
       empty: locationStats.empty,
       occupied: locationStats.occupied,
       disabled: locationStats.disabled
     })
-    
-  } catch (error) {
-    console.error('加载库位列表失败:', error)
-    ElMessage.error('加载库位列表失败')
-  } finally {
-    loading.value = false
-  }
 }
 
 // 仓库变化处理
@@ -1132,14 +1318,6 @@ const batchDelete = async () => {
   } catch {
     // 用户取消
   }
-}
-
-// 更新统计数据
-const updateLocationStats = () => {
-  locationStats.total = locations.value.length
-  locationStats.empty = locations.value.filter(item => item.status === 'empty').length
-  locationStats.occupied = locations.value.filter(item => item.status === 'occupied').length
-  locationStats.disabled = locations.value.filter(item => item.status === 'disabled').length
 }
 
 // 分页处理

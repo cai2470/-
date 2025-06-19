@@ -172,6 +172,7 @@ import {
   Document, 
   Check 
 } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 import ArrivalNotification from './components/ArrivalNotification.vue'
 import PendingArrival from './components/PendingArrival.vue'
 import UnloadingGoods from './components/UnloadingGoods.vue'
@@ -192,28 +193,88 @@ const stats = reactive({
   completed: 0
 })
 
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 从本地存储加载数据
+  const stored = localStorage.getItem('inbound_orders')
+  if (stored) {
+    try {
+      const data = JSON.parse(stored)
+      return Array.isArray(data) ? data : []
+    } catch (parseError) {
+      console.error('解析本地存储数据失败:', parseError)
+      return []
+    }
+  }
+  return []
+}
+
 // 加载统计数据
-const loadStats = () => {
+const loadStats = async () => {
   try {
-    // 从localStorage获取入库单数据
-    const inboundOrders = JSON.parse(localStorage.getItem('inbound_orders') || '[]')
+    // 尝试API调用获取入库单数据
+    const response = await wmsAPI.getInboundOrders()
+    
+    // 处理不同的响应格式
+    let inboundOrders = []
+    if (Array.isArray(response)) {
+      inboundOrders = response
+    } else if (response && Array.isArray(response.results)) {
+      inboundOrders = response.results
+    } else if (response && Array.isArray(response.data)) {
+      inboundOrders = response.data
+    } else if (response && Array.isArray(response.orders)) {
+      inboundOrders = response.orders
+    }
     
     // 统计各个状态的数量
-    // arrival表示可创建的到货通知（这里显示0，因为到货通知是创建功能）
-    stats.arrival = 0
+    stats.arrival = 0 // 到货通知是创建功能，显示0
     stats.pending = inboundOrders.filter(order => order.status === 'pending').length
     stats.unloading = inboundOrders.filter(order => order.status === 'unloading').length
     stats.sorting = inboundOrders.filter(order => order.status === 'sorting').length
     stats.shelving = inboundOrders.filter(order => order.status === 'shelving').length
     stats.completed = inboundOrders.filter(order => order.status === 'completed').length
 
+    console.log('✓ API调用成功，加载入库统计数据:', {
+      total: inboundOrders.length,
+      pending: stats.pending,
+      unloading: stats.unloading,
+      sorting: stats.sorting,
+      shelving: stats.shelving,
+      completed: stats.completed
+    })
+
     // 如果没有数据，初始化一些示例数据
     if (inboundOrders.length === 0) {
       initSampleData()
     }
+    
   } catch (error) {
-    console.error('加载统计数据失败:', error)
-    ElMessage.error('加载统计数据失败')
+    console.error('入库统计API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取入库统计')
+    
+    // 统计各个状态的数量
+    stats.arrival = 0
+    stats.pending = fallbackData.filter(order => order.status === 'pending').length
+    stats.unloading = fallbackData.filter(order => order.status === 'unloading').length
+    stats.sorting = fallbackData.filter(order => order.status === 'sorting').length
+    stats.shelving = fallbackData.filter(order => order.status === 'shelving').length
+    stats.completed = fallbackData.filter(order => order.status === 'completed').length
+
+    // 如果没有数据，初始化一些示例数据
+    if (fallbackData.length === 0) {
+      initSampleData()
+    }
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
   }
 }
 
@@ -226,7 +287,7 @@ const initSampleData = () => {
       supplier_id: '1',
       supplier_name: '医药耗材供应商a',
       warehouse_id: '1',
-        warehouse_name: '主仓库',
+      warehouse_name: '主仓库',
       status: 'shelving',
       expected_date: '2025-05-26',
       batch_no: '111222',

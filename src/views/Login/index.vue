@@ -60,7 +60,7 @@
               type="primary"
               plain
             >
-              🔐 管理员: admin / admin123
+              🔐 管理员
             </el-button>
             <el-button 
               size="small" 
@@ -68,7 +68,7 @@
               type="success"
               plain
             >
-              📦 仓库经理: manager / manager123
+              📦 仓库经理
             </el-button>
             <el-button 
               size="small" 
@@ -76,7 +76,7 @@
               type="warning"
               plain
             >
-              👷 操作员: operator / operator123
+              👷 操作员
             </el-button>
             <el-button 
               size="small" 
@@ -84,7 +84,7 @@
               type="info"
               plain
             >
-              👤 测试用户: testuser / 123456
+              👤 测试用户
             </el-button>
           </div>
         </div>

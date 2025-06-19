@@ -312,6 +312,7 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 import { getSupplierOptions, getWarehouseOptions } from '@/utils/filterOptions'
 import { generateOrderNo, generateId, getStorageData, setStorageData } from '@/utils/storage'
 
@@ -391,13 +392,19 @@ const rules = {
 // 加载基础数据
 const loadBasicData = async () => {
   try {
-    // 直接从localStorage加载供应商数据
-    const suppliersData = getStorageData('suppliers') || []
-    suppliers.value = suppliersData.filter(s => s.status === 1).map(s => ({
+    // 安全地从localStorage加载供应商数据
+    const suppliersDataRaw = getStorageData('suppliers')
+    const suppliersData = Array.isArray(suppliersDataRaw) ? suppliersDataRaw : []
+    
+    if (suppliersData.length > 0) {
+      suppliers.value = suppliersData
+        .filter(s => s && s.status === 1)
+        .map(s => ({
       id: s.id,
-      name: s.name,
-      code: s.code || s.supplier_code
+          name: s.name || '未知供应商',
+          code: s.code || s.supplier_code || 'UNKNOWN'
     }))
+    }
     
     // 如果没有数据，使用默认供应商
     if (suppliers.value.length === 0) {
@@ -407,13 +414,19 @@ const loadBasicData = async () => {
       ]
     }
     
-    // 直接从localStorage加载仓库数据
-    const warehousesData = getStorageData('warehouses') || []
-    warehouses.value = warehousesData.filter(w => w.status === 1).map(w => ({
+    // 安全地从localStorage加载仓库数据
+    const warehousesDataRaw = getStorageData('warehouses')
+    const warehousesData = Array.isArray(warehousesDataRaw) ? warehousesDataRaw : []
+    
+    if (warehousesData.length > 0) {
+      warehouses.value = warehousesData
+        .filter(w => w && w.status === 1)
+        .map(w => ({
       id: w.id,
-      name: w.name,
-      code: w.code
+          name: w.name || '未知仓库',
+          code: w.code || 'UNKNOWN'
     }))
+    }
     
     // 如果没有数据，使用默认仓库
     if (warehouses.value.length === 0) {
@@ -423,14 +436,16 @@ const loadBasicData = async () => {
       ]
     }
     
-    // 加载商品列表
-    const productsData = getStorageData('products') || []
+    // 安全地加载商品列表
+    const productsDataRaw = getStorageData('products')
+    const productsData = Array.isArray(productsDataRaw) ? productsDataRaw : []
+    
     availableProducts.value = productsData.map(p => ({
-      id: p.id,
-      code: p.code,
-      name: p.name,
-      unit: p.unit || '台',
-      price: parseFloat(p.price || 0)
+      id: p?.id || Date.now(),
+      code: p?.code || 'UNKNOWN',
+      name: p?.name || '未知商品',
+      unit: p?.unit || '台',
+      price: parseFloat(p?.price || 0)
     }))
     
   } catch (error) {
@@ -443,12 +458,13 @@ const loadBasicData = async () => {
 const loadTableData = async () => {
   loading.value = true
   try {
-    // 从存储中加载入库单数据
-    const orders = getStorageData('inbound_orders') || []
+    // 安全地从存储中加载入库单数据
+    const ordersRaw = getStorageData('inbound_orders')
+    const orders = Array.isArray(ordersRaw) ? ordersRaw : []
     
     // 这里显示新创建的到货通知记录（实际可以是草稿状态或专门的通知记录）
     // 由于我们现在直接创建为pending状态，这里可以显示所有记录供查看
-    let notificationOrders = orders.filter(order => order.status === 'pending' || order.status === 'notified')
+    let notificationOrders = orders.filter(order => order && (order.status === 'pending' || order.status === 'notified'))
     
     // 补充供应商名称
     notificationOrders = notificationOrders.map(order => {

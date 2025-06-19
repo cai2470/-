@@ -204,6 +204,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 import { getStorageData, setStorageData } from '@/utils/storage'
 
 // 响应式数据

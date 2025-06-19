@@ -311,7 +311,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getWarehouseOptions, getZoneOptions, getStockStatusOptions } from '@/utils/filterOptions'
-import api from '@/utils/api'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -461,6 +461,23 @@ const loadZones = async () => {
   }
 }
 
+// API错误降级处理
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 从本地存储获取数据
+  let inventoryData = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
+  
+  // 如果本地也没有数据，初始化一些默认数据
+  if (inventoryData.length === 0) {
+    console.log('📝 初始化默认库存数据')
+    inventoryData = initDefaultInventoryData()
+    localStorage.setItem('inventory_stock', JSON.stringify(inventoryData))
+  }
+  
+  return inventoryData
+}
+
 // 检查数据是否有更新
 const checkDataVersion = () => {
   try {
@@ -481,53 +498,50 @@ const checkDataVersion = () => {
 const loadStockData = async (showMessage = false) => {
   loading.value = true
   try {
-    // 优先使用真实API，失败时降级到本地数据
-    let inventoryData = []
-    
-    try {
-      console.log('🔄 正在从API加载库存数据...')
+    console.log('🔄 开始加载库存数据...')
       
       // 构建查询参数
       const params = {
-        productId: searchForm.product_code ? undefined : undefined, // 暂时不支持按商品ID筛选
-        lowStock: searchForm.stock_status === 'warning' ? true : undefined
+      page: pagination.page,
+      page_size: pagination.size
+    }
+    if (searchForm.warehouse_id) params.warehouse_id = searchForm.warehouse_id
+    if (searchForm.zone_id) params.zone_id = searchForm.zone_id
+    if (searchForm.product_name) params.search = searchForm.product_name
+    if (searchForm.product_code) params.product_code = searchForm.product_code
+    if (searchForm.stock_status) params.stock_status = searchForm.stock_status
+    
+    let inventoryData = []
+    let total = 0
+    
+    try {
+      // 调用API
+      const response = await wmsAPI.getInventory(params)
+      console.log('✅ 库存API响应:', response)
+      
+      // 处理不同的响应格式
+      if (response && typeof response === 'object') {
+        if (Array.isArray(response)) {
+          inventoryData = response
+          total = response.length
+        } else if (response.results && Array.isArray(response.results)) {
+          // DRF标准分页格式
+          inventoryData = response.results
+          total = response.count || response.results.length
+        } else if (response.data && Array.isArray(response.data)) {
+          inventoryData = response.data
+          total = response.total || response.data.length
+        } else if (response.inventory && Array.isArray(response.inventory)) {
+          inventoryData = response.inventory
+          total = response.total || response.inventory.length
+        }
       }
-      
-      // 调用真实API
-      const response = await api.getInventory(params)
-      console.log('✅ 库存API响应成功:', response)
-      
-      if (response.success !== false && response.inventory) {
-        // 转换API数据格式以适配前端
-        inventoryData = response.inventory.map(item => ({
-          id: item.product_id,
-          product_id: item.product_id,
-          product_code: `PROD${item.product_id}`,
-          product_name: item.product_name,
-          isku: `X${String(item.product_id).padStart(3, '0')}X${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
-          warehouse_id: 1,
-          warehouse_name: '主仓库',
-          zone_id: 1,
-          zone_name: 'A区',
-          location_name: `A01-${String(item.product_id).padStart(2, '0')}-01`,
-          current_stock: item.current_stock || 0,
-          available_stock: item.available_stock || 0,
-          reserved_stock: item.reserved_stock || 0,
-          qualified_stock: item.current_stock || 0,
-          unqualified_stock: 0,
-          min_stock: 10,
-          unit: '台',
-          stock_status: getStockStatus(item.available_stock || 0, 10),
-          last_updated: item.last_updated || new Date().toLocaleString(),
-          image: null,
-          attributes: []
-        }))
         
         console.log(`✅ 从API加载了 ${inventoryData.length} 条库存记录`)
+      if (showMessage) {
         ElMessage.success(`成功加载 ${inventoryData.length} 条库存记录`)
-      } else {
-        throw new Error('API返回数据格式错误')
       }
+      
     } catch (apiError) {
       console.warn('⚠️ 库存API请求失败，降级使用本地数据:', apiError.message)
       if (showMessage) {
@@ -535,18 +549,10 @@ const loadStockData = async (showMessage = false) => {
       }
       
       // 降级到本地数据
-      inventoryData = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
-      
-      // 如果本地也没有数据，初始化一些默认数据
-      if (inventoryData.length === 0) {
-        console.log('📝 初始化默认库存数据')
-        inventoryData = initDefaultInventoryData()
-        localStorage.setItem('inventory_stock', JSON.stringify(inventoryData))
-      }
+      const localData = handleAPIFallback(apiError, '获取库存数据')
+      inventoryData = localData
+      total = localData.length
     }
-    
-    console.log('=== 库存查询数据加载 ===')
-    console.log('库存数据:', inventoryData)
     
     // 确保每条记录都有必要的字段
     inventoryData = inventoryData.map(item => ({
@@ -560,56 +566,17 @@ const loadStockData = async (showMessage = false) => {
       last_updated: item.last_updated || new Date().toLocaleString()
     }))
     
-    // 应用筛选条件
-    let filteredData = inventoryData
-    
-    // 仓库筛选
-    if (searchForm.warehouse_id) {
-      filteredData = filteredData.filter(item => 
-        item.warehouse_id == searchForm.warehouse_id
-      )
-    }
-    
-    // 库区筛选
-    if (searchForm.zone_id) {
-      filteredData = filteredData.filter(item => 
-        (item.zone_id || 1) == searchForm.zone_id
-      )
-    }
-    
-    // 商品名称筛选
-    if (searchForm.product_name) {
-      filteredData = filteredData.filter(item => 
-        item.product_name?.toLowerCase().includes(searchForm.product_name.toLowerCase())
-      )
-    }
-    
-    // 商品编码筛选
-    if (searchForm.product_code) {
-      filteredData = filteredData.filter(item => 
-        item.product_code?.toLowerCase().includes(searchForm.product_code.toLowerCase())
-      )
-    }
-    
-    // 库存状态筛选
-    if (searchForm.stock_status) {
-      filteredData = filteredData.filter(item => 
-        item.stock_status === searchForm.stock_status
-      )
-    }
-    
-    console.log('筛选后数据:', filteredData)
-    
-    // 分页处理
-    pagination.total = filteredData.length
-    const startIndex = (pagination.page - 1) * pagination.size
-    const endIndex = startIndex + pagination.size
-    stockList.value = filteredData.slice(startIndex, endIndex)
-    
-    console.log('当前页数据:', stockList.value)
+    // 设置数据和分页
+    stockList.value = inventoryData
+    pagination.total = total
     
     // 更新统计数据
     updateStockStats(inventoryData)
+    
+    console.log('📊 库存数据加载完成:', {
+      total: stockList.value.length,
+      pagination: pagination.total
+    })
     
     if (showMessage && stockList.value.length > 0) {
       ElMessage.success('库存数据已刷新')
@@ -1135,7 +1102,36 @@ const submitAdjust = async () => {
       newStock = adjustQuantity
     }
     
-    // 更新库存数据
+    const adjustmentData = {
+      product_id: currentProduct.value.product_id,
+      product_code: currentProduct.value.product_code,
+      adjustment_type: adjustType,
+      quantity: adjustQuantity,
+      new_stock: newStock,
+      warehouse_id: adjustForm.warehouse_id || currentProduct.value.warehouse_id,
+      zone_id: adjustForm.zone_id || currentProduct.value.zone_id,
+      reason: adjustForm.reason,
+      remark: adjustForm.remark
+    }
+    
+    try {
+      // 调用API进行库存调整
+      console.log('🔄 提交库存调整:', adjustmentData)
+      await wmsAPI.adjustInventory(adjustmentData)
+      
+      console.log('✅ 库存调整成功')
+      ElMessage.success(`库存调整成功！${currentProduct.value.product_name} 库存从 ${currentProduct.value.current_stock} 调整为 ${newStock}`)
+      
+      // 重新加载数据
+      await loadStockData()
+      
+    } catch (error) {
+      console.error('❌ 库存调整API失败:', error)
+      
+      // API失败时的降级处理
+      ElMessage.warning('API连接失败，使用本地存储调整')
+      
+      // 更新本地库存数据
     let inventoryData = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
     
     // 查找并更新记录
@@ -1162,9 +1158,9 @@ const submitAdjust = async () => {
         product_id: currentProduct.value.product_id,
         product_code: currentProduct.value.product_code,
         product_name: currentProduct.value.product_name,
-        warehouse_id: searchForm.warehouse_id || 1,
+          warehouse_id: adjustForm.warehouse_id || 1,
         warehouse_name: currentProduct.value.warehouse_name || '主仓库',
-        zone_id: searchForm.zone_id || 1,
+          zone_id: adjustForm.zone_id || 1,
         zone_name: currentProduct.value.zone_name || 'A区',
         location_id: 1,
         location_name: currentProduct.value.location_name || 'A001',
@@ -1185,41 +1181,37 @@ const submitAdjust = async () => {
     // 保存到localStorage
     localStorage.setItem('inventory_stock', JSON.stringify(inventoryData))
     
-    // 同时更新商品表的库存字段
-    const productsData = JSON.parse(localStorage.getItem('wms_products') || '[]')
-    const productIndex = productsData.findIndex(p => 
-      p.code === currentProduct.value.product_code || p.id === currentProduct.value.product_id
-    )
-    
-    if (productIndex !== -1) {
-      productsData[productIndex].stock = newStock
-      productsData[productIndex].last_stock_update = new Date().toLocaleString()
-      localStorage.setItem('wms_products', JSON.stringify(productsData))
-    }
-    
     // 记录库存变动历史
-    const stockMovements = JSON.parse(localStorage.getItem('stock_movements') || '[]')
+      const stockMovements = JSON.parse(localStorage.getItem('wms_stock_movements') || '[]')
     stockMovements.push({
-      id: Date.now(),
+        id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        product_id: currentProduct.value.product_id,
       product_code: currentProduct.value.product_code,
       product_name: currentProduct.value.product_name,
-      movement_type: 'adjust',
-      adjust_type: adjustType,
+        movement_type: 'adjustment',
+        quantity: adjustType === 'set' ? (newStock - currentProduct.value.current_stock) : 
+                 (adjustType === 'in' ? adjustQuantity : -adjustQuantity),
       before_quantity: currentProduct.value.current_stock,
       after_quantity: newStock,
-      change_quantity: adjustType === 'set' ? (newStock - currentProduct.value.current_stock) : 
-                      (adjustType === 'in' ? adjustQuantity : -adjustQuantity),
-      reason: adjustForm.reason,
-      remark: adjustForm.remark,
-      warehouse_name: currentProduct.value.warehouse_name || '主仓库',
-      operator: '系统管理员',
-      created_at: new Date().toLocaleString()
+        warehouse_id: adjustForm.warehouse_id || currentProduct.value.warehouse_id,
+        location_id: currentProduct.value.location_id || '1',
+        location_name: currentProduct.value.location_name || 'A001',
+        order_no: '',
+        remark: `${adjustForm.reason} - ${adjustForm.remark}`,
+        created_at: new Date().toISOString(),
+        created_by: '系统管理员'
     })
-    localStorage.setItem('stock_movements', JSON.stringify(stockMovements))
+      localStorage.setItem('wms_stock_movements', JSON.stringify(stockMovements))
     
-    ElMessage.success(`库存调整成功！${currentProduct.value.product_name} 库存从 ${currentProduct.value.current_stock} 调整为 ${newStock}`)
+      ElMessage.success(`本地库存调整成功！${currentProduct.value.product_name} 库存从 ${currentProduct.value.current_stock} 调整为 ${newStock}`)
+      
+      // 重新加载本地数据
+      await loadStockData()
+    }
+    
     adjustDialogVisible.value = false
-    loadStockData()
+    resetAdjustForm()
+    
   } catch (error) {
     if (error !== false) {
       ElMessage.error('库存调整失败')

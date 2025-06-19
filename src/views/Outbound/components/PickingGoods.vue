@@ -214,6 +214,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 
 const emit = defineEmits(['refresh'])
 

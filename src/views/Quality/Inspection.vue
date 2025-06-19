@@ -395,6 +395,7 @@ import {
   Plus, Check, Close, Clock, Loading, Refresh
 } from '@element-plus/icons-vue'
 import { getInspectionStatusOptions, getPriorityOptions } from '@/utils/filterOptions'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)

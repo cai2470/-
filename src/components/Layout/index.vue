@@ -85,7 +85,6 @@
             <el-menu-item index="/system/roles">角色管理</el-menu-item>
             <el-menu-item index="/system/permissions">权限管理</el-menu-item>
             <el-menu-item index="/system/logs">系统日志</el-menu-item>
-            <el-menu-item index="/system/settings">系统设置</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-aside>
@@ -120,7 +119,6 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item command="settings">系统设置</el-dropdown-item>
                   <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -175,9 +173,6 @@ const handleCommand = async (command) => {
   switch (command) {
     case 'profile':
       ElMessage.info('个人中心功能开发中...')
-      break
-    case 'settings':
-      router.push('/system/settings')
       break
     case 'logout':
       try {

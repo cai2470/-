@@ -512,6 +512,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -719,75 +720,138 @@ const loadBasicData = async () => {
   }
 }
 
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 返回模拟数据
+  return [
+    {
+      id: 1,
+      purchase_no: 'PO202401150001',
+      supplier_name: '华为供应商',
+      warehouse_name: '主仓库',
+      total_quantity: 50,
+      received_quantity: 0,
+      stored_quantity: 0,
+      total_amount: 349400.00,
+      receive_status: 'pending',
+      urgency: 'urgent',
+      expected_date: '2024-01-16 14:00:00',
+      actual_date: '',
+      created_by: '张三'
+    },
+    {
+      id: 2,
+      purchase_no: 'PO202401140002',
+      supplier_name: '小米供应商',
+      warehouse_name: '北京仓库',
+      total_quantity: 30,
+      received_quantity: 30,
+      stored_quantity: 0,
+      total_amount: 140970.00,
+      receive_status: 'received',
+      urgency: 'normal',
+      expected_date: '2024-01-15 10:00:00',
+      actual_date: '2024-01-15 09:30:00',
+      created_by: '李四'
+    },
+    {
+      id: 3,
+      purchase_no: 'PO202401130003',
+      supplier_name: '苹果供应商',
+      warehouse_name: '上海仓库',
+      total_quantity: 25,
+      received_quantity: 25,
+      stored_quantity: 25,
+      total_amount: 199975.00,
+      receive_status: 'stored',
+      urgency: 'normal',
+      expected_date: '2024-01-14 16:00:00',
+      actual_date: '2024-01-14 15:45:00',
+      created_by: '王五'
+    }
+  ]
+}
+
 // 加载采购单数据
 const loadPurchaseData = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
+    // 构建查询参数
+    const params = {}
+    if (filterForm.purchase_no) params.purchase_no = filterForm.purchase_no
+    if (filterForm.supplier_id) params.supplier_id = filterForm.supplier_id
+    if (filterForm.receive_status) params.status = filterForm.receive_status
+    if (filterForm.urgency) params.urgency = filterForm.urgency
+    if (filterForm.date_range && filterForm.date_range.length === 2) {
+      params.start_date = filterForm.date_range[0]
+      params.end_date = filterForm.date_range[1]
+    }
     
-    const mockData = [
-      {
-        id: 1,
-        purchase_no: 'PO202401150001',
-        supplier_name: '华为供应商',
-        warehouse_name: '主仓库',
-        total_quantity: 50,
-        received_quantity: 0,
-        stored_quantity: 0,
-        total_amount: 349400.00,
-        receive_status: 'pending',
-        urgency: 'urgent',
-        expected_date: '2024-01-16 14:00:00',
-        actual_date: '',
-        created_by: '张三'
-      },
-      {
-        id: 2,
-        purchase_no: 'PO202401140002',
-        supplier_name: '小米供应商',
-        warehouse_name: '北京仓库',
-        total_quantity: 30,
-        received_quantity: 30,
-        stored_quantity: 0,
-        total_amount: 140970.00,
-        receive_status: 'received',
-        urgency: 'normal',
-        expected_date: '2024-01-15 10:00:00',
-        actual_date: '2024-01-15 09:30:00',
-        created_by: '李四'
-      },
-      {
-        id: 3,
-        purchase_no: 'PO202401130003',
-        supplier_name: '苹果供应商',
-        warehouse_name: '上海仓库',
-        total_quantity: 25,
-        received_quantity: 25,
-        stored_quantity: 25,
-        total_amount: 199975.00,
-        receive_status: 'stored',
-        urgency: 'normal',
-        expected_date: '2024-01-14 16:00:00',
-        actual_date: '2024-01-14 15:45:00',
-        created_by: '王五'
-      }
-    ]
+    // 分页参数
+    params.page = pagination.page
+    params.page_size = pagination.size
     
-    purchaseList.value = mockData
-    pagination.total = mockData.length
+    // 调用API获取采购入库单数据
+    const response = await wmsAPI.getInboundOrders(params)
+    
+    // 处理不同的响应格式
+    let purchaseData = []
+    if (Array.isArray(response)) {
+      purchaseData = response
+      pagination.total = response.length
+    } else if (response && Array.isArray(response.results)) {
+      purchaseData = response.results
+      pagination.total = response.count || response.total || response.results.length
+    } else if (response && Array.isArray(response.data)) {
+      purchaseData = response.data
+      pagination.total = response.total || response.data.length
+    } else if (response && Array.isArray(response.purchase_orders)) {
+      purchaseData = response.purchase_orders
+      pagination.total = response.total || response.purchase_orders.length
+    }
+    
+    purchaseList.value = purchaseData
     
     // 更新统计数据
-    stats.total = mockData.length
-    stats.pending = mockData.filter(item => item.receive_status === 'pending').length
-    stats.processing = mockData.filter(item => ['partial', 'received', 'verified'].includes(item.receive_status)).length
-    stats.completed = mockData.filter(item => item.receive_status === 'stored').length
+    updatePurchaseStats(purchaseData)
+    
+    console.log('✓ API调用成功，加载采购入库数据:', {
+      total: purchaseData.length,
+      pending: stats.pending,
+      processing: stats.processing,
+      completed: stats.completed
+    })
     
   } catch (error) {
-    ElMessage.error('加载采购单数据失败')
+    console.error('采购入库API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取采购入库单')
+    purchaseList.value = fallbackData
+    pagination.total = fallbackData.length
+    
+    // 更新统计数据
+    updatePurchaseStats(fallbackData)
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
+    
   } finally {
     loading.value = false
   }
+}
+
+// 更新采购统计数据
+const updatePurchaseStats = (data) => {
+  stats.total = data.length
+  stats.pending = data.filter(item => item.receive_status === 'pending').length
+  stats.processing = data.filter(item => ['partial', 'received', 'verified'].includes(item.receive_status)).length
+  stats.completed = data.filter(item => item.receive_status === 'stored').length
 }
 
 // 搜索

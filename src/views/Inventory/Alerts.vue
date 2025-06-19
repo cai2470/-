@@ -390,7 +390,12 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { 
+  Plus, Minus, CircleCloseFilled, WarningFilled, Clock, CircleCheckFilled,
+  Warning, Download, Refresh, View, Edit, Delete, Setting
+} from '@element-plus/icons-vue'
 import { getWarehouseOptions, getAlertTypeOptions, getAlertStatusOptions, getPriorityOptions } from '@/utils/filterOptions'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -554,65 +559,60 @@ const getStockClass = (row) => {
   return 'stock-normal'
 }
 
-// 加载基础数据
-const loadBasicData = async () => {
-  try {
-    // 加载筛选选项
-    warehouseOptions.value = getWarehouseOptions()
-    alertTypeOptions.value = getAlertTypeOptions()
-    alertStatusOptions.value = getAlertStatusOptions()
-    priorityOptions.value = getPriorityOptions()
-
-    // 加载仓库列表（为了向后兼容）
-    warehouses.value = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-    if (warehouses.value.length === 0) {
-      warehouses.value = [
-        { id: 1, name: '主仓库', code: 'WH001' },
-        { id: 2, name: '北京仓库', code: 'WH002' },
-        { id: 3, name: '上海仓库', code: 'WH003' }
-      ]
-    }
-
-    // 加载供应商列表
-    suppliers.value = JSON.parse(localStorage.getItem('wms_suppliers') || '[]')
-    if (suppliers.value.length === 0) {
-      suppliers.value = [
-        { id: 1, name: '华为供应商', code: 'SUP001' },
-        { id: 2, name: '小米供应商', code: 'SUP002' },
-        { id: 3, name: '苹果供应商', code: 'SUP003' }
-      ]
-    }
-  } catch (error) {
-    console.error('加载基础数据失败:', error)
-  }
-}
-
-// 加载预警数据
-const loadAlertData = async () => {
-  loading.value = true
-  try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
-
+// API错误降级处理
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 获取本地存储默认数据
+  const getDefaultAlerts = () => {
     // 从真实库存数据生成预警
     const inventoryStock = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
-    const products = JSON.parse(localStorage.getItem('wms_products') || '[]')
-    const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
     
+    // 安全地解析商品数据
+    let products = []
+    try {
+      const productsStored = localStorage.getItem('wms_products')
+      if (productsStored) {
+        const parsed = JSON.parse(productsStored)
+        products = Array.isArray(parsed) ? parsed : []
+      }
+    } catch (error) {
+      console.warn('商品数据解析失败:', error)
+      products = []
+    }
+
+    // 安全地解析仓库数据
+    let warehousesData = []
+    try {
+      const warehousesStored = localStorage.getItem('wms_warehouses')
+      if (warehousesStored) {
+        const parsed = JSON.parse(warehousesStored)
+        warehousesData = Array.isArray(parsed) ? parsed : []
+      }
+    } catch (error) {
+      console.warn('仓库数据解析失败:', error)
+      warehousesData = []
+    }
+
     const alerts = []
     let alertId = 1
-    
+
     // 遍历库存数据生成预警
     for (const stock of inventoryStock) {
-      const product = products.find(p => p.id === stock.id || p.code === stock.product_code)
+      // 安全地查找商品信息
+      let product = null
+      if (Array.isArray(products) && products.length > 0) {
+        product = products.find(p => p && (p.id === stock.id || p.code === stock.product_code))
+      }
+
       const currentStock = parseInt(stock.current_stock || stock.qualified_stock || 0)
       const minStock = parseInt(stock.min_stock || product?.min_stock || 10)
       const alertThreshold = Math.ceil(minStock * 1.5) // 预警阈值为最低库存的1.5倍
-      
+
       let alertType = ''
       let priority = ''
       let status = 'pending'
-      
+
       // 判断预警类型和级别
       if (currentStock === 0) {
         alertType = 'out_of_stock'
@@ -621,105 +621,119 @@ const loadAlertData = async () => {
         alertType = 'low_stock'
         priority = currentStock <= minStock ? 'critical' : 'warning'
       }
-      
+
       // 只有需要预警的才加入列表
       if (alertType) {
-        // 随机生成一些已处理的预警
-        if (Math.random() > 0.7) {
-          status = ['processing', 'resolved', 'ignored'][Math.floor(Math.random() * 3)]
-        }
-        
         alerts.push({
           id: alertId++,
           alert_type: alertType,
           priority: priority,
-          product_name: stock.product_name || product?.name || '未知商品',
-          product_code: stock.product_code || product?.code || 'UNKNOWN',
-          warehouse_name: stock.warehouse_name || '主仓库',
+          product_id: stock.product_id || stock.id,
+          product_name: stock.product_name,
+          product_code: stock.product_code,
+          warehouse_id: stock.warehouse_id,
+          warehouse_name: stock.warehouse_name,
+          location_id: stock.location_id || '1',
           location_name: stock.location_name || 'A001',
           current_stock: currentStock,
           min_stock: minStock,
           alert_threshold: alertThreshold,
+          deficit: Math.max(0, minStock - currentStock),
           status: status,
-          created_time: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toLocaleString(),
-          processed_time: status !== 'pending' ? new Date(Date.now() - Math.random() * 2 * 24 * 60 * 60 * 1000).toLocaleString() : '',
-          supplier_id: Math.floor(Math.random() * 3) + 1
+          created_time: new Date().toLocaleString(),
+          processed_time: null,
+          processor: null,
+          remark: ''
         })
       }
     }
-    
-    // 如果没有真实库存数据，使用一些示例预警
-    if (alerts.length === 0) {
-      alerts.push(
-        {
-          id: 1,
-          alert_type: 'low_stock',
-          priority: 'warning',
-          product_name: '华为P50 Pro',
-          product_code: 'HW001',
-          warehouse_name: '主仓库',
-          location_name: 'A001',
-          current_stock: 8,
-          min_stock: 20,
-          alert_threshold: 30,
-          status: 'pending',
-          created_time: new Date(Date.now() - 2 * 60 * 60 * 1000).toLocaleString(),
-          processed_time: '',
-          supplier_id: 1
-        },
-        {
-          id: 2,
-          alert_type: 'out_of_stock',
-          priority: 'critical',
-          product_name: 'ThinkPad X1 Carbon',
-          product_code: 'LP001',
-          warehouse_name: '北京仓库',
-          location_name: 'A001',
-          current_stock: 0,
-          min_stock: 5,
-          alert_threshold: 8,
-          status: 'pending',
-          created_time: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toLocaleString(),
-          processed_time: '',
-          supplier_id: 3
-        }
-      )
+
+    return alerts
+  }
+
+  const stored = localStorage.getItem('wms_alerts')
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored)
+      return Array.isArray(parsed) ? parsed : getDefaultAlerts()
+    } catch (error) {
+      console.error('解析本地存储数据失败:', error)
     }
+  }
+
+  const defaultData = getDefaultAlerts()
+  localStorage.setItem('wms_alerts', JSON.stringify(defaultData))
+  return defaultData
+}
+
+// 加载基础数据
+const loadBasicData = async () => {
+  try {
+    // 加载筛选选项
+    warehouseOptions.value = getWarehouseOptions()
+    alertTypeOptions.value = getAlertTypeOptions()
+    alertStatusOptions.value = getAlertStatusOptions()
+    priorityOptions.value = getPriorityOptions()
     
-    // 应用筛选条件
-    let filteredAlerts = alerts
+    // 加载仓库数据
+    warehouses.value = warehouseOptions.value.map(w => ({
+      id: w.value,
+      name: w.label
+    }))
     
-    if (filterForm.alert_type) {
-      filteredAlerts = filteredAlerts.filter(alert => alert.alert_type === filterForm.alert_type)
-    }
-    if (filterForm.priority) {
-      filteredAlerts = filteredAlerts.filter(alert => alert.priority === filterForm.priority)
-    }
-    if (filterForm.warehouse_id) {
-      const selectedWarehouse = warehouseOptions.value.find(w => w.value === filterForm.warehouse_id)
-      if (selectedWarehouse) {
-        filteredAlerts = filteredAlerts.filter(alert => alert.warehouse_name === selectedWarehouse.label)
+  } catch (error) {
+    console.error('加载基础数据失败:', error)
+    ElMessage.error('加载基础数据失败')
+  }
+}
+
+// 加载预警数据
+const loadAlertsData = async () => {
+  loading.value = true
+  try {
+    console.log('🔄 开始加载库存预警数据...')
+    
+    // 构建查询参数
+    const params = {}
+    if (filterForm.alert_type) params.alert_type = filterForm.alert_type
+    if (filterForm.priority) params.priority = filterForm.priority
+    if (filterForm.warehouse_id) params.warehouse_id = filterForm.warehouse_id
+    if (filterForm.status) params.status = filterForm.status
+    
+    // 调用API
+    const response = await wmsAPI.getInventoryAlerts(params)
+    
+    console.log('✅ API响应:', response)
+    
+    // 处理不同的响应格式
+    let alertsData = []
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        alertsData = response
+      } else if (response.results && Array.isArray(response.results)) {
+        alertsData = response.results
+      } else if (response.data && Array.isArray(response.data)) {
+        alertsData = response.data
+      } else if (response.alerts && Array.isArray(response.alerts)) {
+        alertsData = response.alerts
       }
     }
-    if (filterForm.status) {
-      filteredAlerts = filteredAlerts.filter(alert => alert.status === filterForm.status)
-    }
     
-    // 按创建时间倒序排序
-    filteredAlerts.sort((a, b) => new Date(b.created_time) - new Date(a.created_time))
+    alertList.value = alertsData
     
-    alertList.value = filteredAlerts
-    pagination.total = filteredAlerts.length
-
-    // 更新统计数据（基于所有预警，不是筛选后的）
-    alertStats.critical = alerts.filter(item => item.priority === 'critical' && item.status === 'pending').length
-    alertStats.warning = alerts.filter(item => item.priority === 'warning' && item.status === 'pending').length
-    alertStats.expired = alerts.filter(item => item.alert_type === 'expiry').length
-    alertStats.processed = alerts.filter(item => item.status === 'resolved').length
-
+    // 更新统计数据
+    updateAlertStats()
+    
+    console.log('📊 预警数据加载完成:', {
+      total: alertList.value.length,
+      hasData: alertList.value.length > 0
+    })
+    
   } catch (error) {
-    console.error('加载预警数据失败:', error)
-    ElMessage.error('加载预警数据失败')
+    console.error('❌ 加载预警数据失败:', error)
+    alertList.value = handleAPIFallback(error, '获取库存预警')
+    updateAlertStats()
+    ElMessage.warning('API连接失败，使用本地数据')
   } finally {
     loading.value = false
   }
@@ -727,7 +741,7 @@ const loadAlertData = async () => {
 
 // 搜索预警
 const searchAlerts = () => {
-  loadAlertData()
+  loadAlertsData()
 }
 
 // 重置筛选
@@ -738,13 +752,13 @@ const resetFilter = () => {
     warehouse_id: null,
     status: ''
   })
-  loadAlertData()
+  loadAlertsData()
 }
 
 // 刷新预警
 const refreshAlerts = () => {
   ElMessage.success('预警数据已刷新')
-  loadAlertData()
+  loadAlertsData()
 }
 
 // 导出预警
@@ -889,7 +903,7 @@ const submitProcess = async () => {
     
     ElMessage.success('预警处理成功')
     processDialogVisible.value = false
-    loadAlertData()
+    loadAlertsData()
   } catch (error) {
     if (error !== false) {
       ElMessage.error('预警处理失败')
@@ -912,7 +926,7 @@ const submitReplenish = async () => {
     
     ElMessage.success('补货单创建成功')
     replenishDialogVisible.value = false
-    loadAlertData()
+    loadAlertsData()
   } catch (error) {
     if (error !== false) {
       ElMessage.error('补货单创建失败')
@@ -958,17 +972,25 @@ const handleSelectionChange = (selection) => {
 // 分页处理
 const handleSizeChange = (size) => {
   pagination.size = size
-  loadAlertData()
+  loadAlertsData()
 }
 
 const handleCurrentChange = (page) => {
   pagination.page = page
-  loadAlertData()
+  loadAlertsData()
+}
+
+// 更新统计数据
+const updateAlertStats = () => {
+  alertStats.critical = alertList.value.filter(item => item.priority === 'critical' && item.status === 'pending').length
+  alertStats.warning = alertList.value.filter(item => item.priority === 'warning' && item.status === 'pending').length
+  alertStats.expired = alertList.value.filter(item => item.alert_type === 'expiry').length
+  alertStats.processed = alertList.value.filter(item => item.status === 'resolved').length
 }
 
 onMounted(() => {
   loadBasicData()
-  loadAlertData()
+  loadAlertsData()
 })
 </script>
 

@@ -455,6 +455,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -604,6 +605,76 @@ const generateCountNo = () => {
   return `IC${year}${month}${day}${time}`
 }
 
+// API错误降级处理
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 获取本地存储默认数据
+  const getDefaultCounts = () => {
+    // 从localStorage获取已保存的盘点记录
+    let savedCounts = JSON.parse(localStorage.getItem('inventory_counts') || '[]')
+    
+    // 如果没有保存的盘点记录，基于真实库存数据生成一些盘点记录
+    if (savedCounts.length === 0) {
+      const inventoryStock = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
+      const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+      
+      // 按仓库分组统计商品数量
+      const warehouseStats = {}
+      inventoryStock.forEach(stock => {
+        const warehouseId = stock.warehouse_id || 1
+        if (!warehouseStats[warehouseId]) {
+          warehouseStats[warehouseId] = {
+            warehouse_id: warehouseId,
+            warehouse_name: stock.warehouse_name || '主仓库',
+            product_count: 0
+          }
+        }
+        warehouseStats[warehouseId].product_count++
+      })
+      
+      // 生成一些示例盘点记录
+      savedCounts = Object.values(warehouseStats).map((stat, index) => ({
+        id: index + 1,
+        count_no: `IC2024010${index + 1}001`,
+        count_type: ['full', 'sample', 'dynamic'][index % 3],
+        warehouse_id: stat.warehouse_id,
+        warehouse_name: stat.warehouse_name,
+        zone_id: null,
+        zone_name: null,
+        status: ['pending', 'counting', 'completed'][index % 3],
+        product_count: stat.product_count,
+        counted_items: Math.floor(stat.product_count * (index === 2 ? 1 : 0.6)),
+        difference_count: index === 2 ? Math.floor(stat.product_count * 0.1) : 0,
+        counter: ['张三', '李四', '王五'][index % 3],
+        created_time: new Date(Date.now() - (index + 1) * 24 * 60 * 60 * 1000).toLocaleString(),
+        start_time: index > 0 ? new Date(Date.now() - index * 12 * 60 * 60 * 1000).toLocaleString() : null,
+        end_time: index === 2 ? new Date(Date.now() - 2 * 60 * 60 * 1000).toLocaleString() : null,
+        planned_start_time: new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleString(),
+        remark: `${stat.warehouse_name}库存盘点`
+      }))
+      
+      localStorage.setItem('inventory_counts', JSON.stringify(savedCounts))
+    }
+    
+    return savedCounts
+  }
+
+  const stored = localStorage.getItem('inventory_counts')
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored)
+      return Array.isArray(parsed) ? parsed : getDefaultCounts()
+    } catch (error) {
+      console.error('解析本地存储数据失败:', error)
+    }
+  }
+
+  const defaultData = getDefaultCounts()
+  localStorage.setItem('inventory_counts', JSON.stringify(defaultData))
+  return defaultData
+}
+
 // 加载基础数据
 const loadBasicData = async () => {
   try {
@@ -636,151 +707,53 @@ const loadBasicData = async () => {
 const loadCountData = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
+    console.log('🔄 开始加载库存盘点数据...')
     
-    // 从localStorage获取已保存的盘点记录
-    let savedCounts = JSON.parse(localStorage.getItem('inventory_counts') || '[]')
-    
-    // 如果没有保存的盘点记录，基于真实库存数据生成一些盘点记录
-    if (savedCounts.length === 0) {
-      const inventoryStock = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
-      const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-      
-      // 按仓库分组统计商品数量
-      const warehouseStats = {}
-      inventoryStock.forEach(stock => {
-        const warehouseId = stock.warehouse_id || 1
-        const warehouseName = stock.warehouse_name || warehousesData.find(w => w.id === warehouseId)?.name || '主仓库'
-        
-        if (!warehouseStats[warehouseId]) {
-          warehouseStats[warehouseId] = {
-            warehouse_name: warehouseName,
-            product_count: 0,
-            zones: new Set()
-          }
-        }
-        
-        warehouseStats[warehouseId].product_count++
-        warehouseStats[warehouseId].zones.add(stock.zone_name || 'A区')
-      })
-      
-      // 生成盘点记录
-      const counters = ['张三', '李四', '王五', '赵六', '陈七']
-      const countTypes = ['full', 'sample', 'cycle', 'dynamic']
-      const statuses = ['completed', 'counting', 'pending']
-      
-      let countId = 1
-      Object.entries(warehouseStats).forEach(([warehouseId, stats]) => {
-        // 为每个仓库生成1-2个盘点记录
-        const countNum = Math.floor(Math.random() * 2) + 1
-        
-        for (let i = 0; i < countNum; i++) {
-          const daysAgo = Math.floor(Math.random() * 7) + 1
-          const createdTime = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)
-          const status = statuses[Math.floor(Math.random() * statuses.length)]
-          
-          let startTime = ''
-          let endTime = ''
-          let differenceCount = null
-          
-          if (status === 'counting' || status === 'completed') {
-            startTime = new Date(createdTime.getTime() + 30 * 60 * 1000).toLocaleString()
-          }
-          
-          if (status === 'completed') {
-            endTime = new Date(createdTime.getTime() + (3 + Math.random() * 2) * 60 * 60 * 1000).toLocaleString()
-            differenceCount = Math.floor(Math.random() * 5) // 0-4个差异
-          }
-          
-          savedCounts.push({
-            id: countId++,
-            count_no: `IC${createdTime.getFullYear()}${String(createdTime.getMonth() + 1).padStart(2, '0')}${String(createdTime.getDate()).padStart(2, '0')}${String(countId).padStart(4, '0')}`,
-            count_type: countTypes[Math.floor(Math.random() * countTypes.length)],
-            warehouse_id: parseInt(warehouseId),
-            warehouse_name: stats.warehouse_name,
-            zone_name: Array.from(stats.zones)[0] || 'A区',
-            product_count: Math.min(stats.product_count, Math.floor(Math.random() * 20) + 5),
-            status: status,
-            difference_count: differenceCount,
-            counter: counters[Math.floor(Math.random() * counters.length)],
-            created_time: createdTime.toLocaleString(),
-            start_time: startTime,
-            end_time: endTime,
-            remark: status === 'completed' ? '盘点完成' : status === 'counting' ? '盘点进行中' : '待开始盘点'
-          })
-        }
-      })
-      
-      // 如果还是没有数据，创建一些默认记录
-      if (savedCounts.length === 0) {
-        savedCounts = [
-          {
-            id: 1,
-            count_no: 'IC202401150001',
-            count_type: 'full',
-            warehouse_id: 1,
-            warehouse_name: '主仓库',
-            zone_name: 'A区',
-            product_count: 25,
-            status: 'completed',
-            difference_count: 3,
-            counter: '张三',
-            created_time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleString(),
-            start_time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000).toLocaleString(),
-            end_time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000).toLocaleString(),
-            remark: '月度盘点'
-          }
-        ]
-      }
-      
-      // 保存生成的盘点记录
-      localStorage.setItem('inventory_counts', JSON.stringify(savedCounts))
-    }
-    
-    // 应用筛选条件
-    let filteredCounts = savedCounts
-    
-    if (filterForm.count_type) {
-      filteredCounts = filteredCounts.filter(count => count.count_type === filterForm.count_type)
-    }
-    if (filterForm.status) {
-      filteredCounts = filteredCounts.filter(count => count.status === filterForm.status)
-    }
-    if (filterForm.warehouse_id) {
-      filteredCounts = filteredCounts.filter(count => count.warehouse_id === filterForm.warehouse_id)
-    }
-    if (filterForm.counter) {
-      filteredCounts = filteredCounts.filter(count => 
-        count.counter.includes(filterForm.counter)
-      )
-    }
+    // 构建查询参数
+    const params = {}
+    if (filterForm.count_type) params.count_type = filterForm.count_type
+    if (filterForm.status) params.status = filterForm.status
+    if (filterForm.warehouse_id) params.warehouse_id = filterForm.warehouse_id
+    if (filterForm.counter) params.counter = filterForm.counter
     if (filterForm.date_range && filterForm.date_range.length === 2) {
-      const startDate = new Date(filterForm.date_range[0]).getTime()
-      const endDate = new Date(filterForm.date_range[1]).getTime() + 24 * 60 * 60 * 1000
-      filteredCounts = filteredCounts.filter(count => {
-        const countDate = new Date(count.created_time).getTime()
-        return countDate >= startDate && countDate <= endDate
-      })
+      params.start_date = filterForm.date_range[0]
+      params.end_date = filterForm.date_range[1]
     }
     
-    // 按创建时间倒序排序
-    filteredCounts.sort((a, b) => new Date(b.created_time) - new Date(a.created_time))
+    // 调用API
+    const response = await wmsAPI.getInventoryCounts(params)
     
-    countList.value = filteredCounts
-    pagination.total = filteredCounts.length
+    console.log('✅ API响应:', response)
     
-    // 更新统计数据（基于所有盘点记录，不是筛选后的）
-    countStats.pending = savedCounts.filter(item => item.status === 'pending').length
-    countStats.counting = savedCounts.filter(item => item.status === 'counting').length
-    countStats.completed = savedCounts.filter(item => item.status === 'completed').length
-    countStats.difference = savedCounts.filter(item => 
-      item.status === 'completed' && item.difference_count > 0
-    ).length
+    // 处理不同的响应格式
+    let countsData = []
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        countsData = response
+      } else if (response.results && Array.isArray(response.results)) {
+        countsData = response.results
+      } else if (response.data && Array.isArray(response.data)) {
+        countsData = response.data
+      } else if (response.counts && Array.isArray(response.counts)) {
+        countsData = response.counts
+      }
+    }
+    
+    countList.value = countsData
+    
+    // 更新统计数据
+    updateCountStats()
+    
+    console.log('📊 盘点数据加载完成:', {
+      total: countList.value.length,
+      hasData: countList.value.length > 0
+    })
     
   } catch (error) {
-    console.error('加载盘点数据失败:', error)
-    ElMessage.error('加载盘点数据失败')
+    console.error('❌ 加载盘点数据失败:', error)
+    countList.value = handleAPIFallback(error, '获取库存盘点记录')
+    updateCountStats()
+    ElMessage.warning('API连接失败，使用本地数据')
   } finally {
     loading.value = false
   }
@@ -1105,6 +1078,16 @@ const handleSizeChange = (size) => {
 const handleCurrentChange = (page) => {
   pagination.page = page
   loadCountData()
+}
+
+// 更新统计数据
+const updateCountStats = () => {
+  countStats.pending = countList.value.filter(item => item.status === 'pending').length
+  countStats.counting = countList.value.filter(item => item.status === 'counting').length
+  countStats.completed = countList.value.filter(item => item.status === 'completed').length
+  countStats.difference = countList.value.filter(item => 
+    item.status === 'completed' && item.difference_count > 0
+  ).length
 }
 
 onMounted(() => {

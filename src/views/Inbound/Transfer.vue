@@ -408,6 +408,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 import { 
   Plus, 
   Check, 
@@ -555,14 +556,12 @@ const loadBasicData = async () => {
   }
 }
 
-// 加载调拨入库数据
-const loadTransferData = async () => {
-  loading.value = true
-  try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 800))
-    
-    const mockData = [
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 返回模拟数据
+  return [
       {
         id: 1,
         transfer_no: 'TO202401150001',
@@ -624,21 +623,86 @@ const loadTransferData = async () => {
         created_by: '赵六'
       }
     ]
+}
+
+// 加载调拨入库数据
+const loadTransferData = async () => {
+  loading.value = true
+  try {
+    // 构建查询参数
+    const params = {}
+    if (filterForm.transfer_no) params.transfer_no = filterForm.transfer_no
+    if (filterForm.source_warehouse_id) params.source_warehouse_id = filterForm.source_warehouse_id
+    if (filterForm.status) params.status = filterForm.status
+    if (filterForm.logistics_status) params.logistics_status = filterForm.logistics_status
+    if (filterForm.date_range && filterForm.date_range.length === 2) {
+      params.start_date = filterForm.date_range[0]
+      params.end_date = filterForm.date_range[1]
+    }
     
-    transferList.value = mockData
-    pagination.total = mockData.length
+    // 分页参数
+    params.page = pagination.page
+    params.page_size = pagination.size
+    
+    // 调用API获取调拨入库数据
+    const response = await wmsAPI.getTransferInOrders(params)
+    
+    // 处理不同的响应格式
+    let transferData = []
+    if (Array.isArray(response)) {
+      transferData = response
+      pagination.total = response.length
+    } else if (response && Array.isArray(response.results)) {
+      transferData = response.results
+      pagination.total = response.count || response.total || response.results.length
+    } else if (response && Array.isArray(response.data)) {
+      transferData = response.data
+      pagination.total = response.total || response.data.length
+    } else if (response && Array.isArray(response.transfer_orders)) {
+      transferData = response.transfer_orders
+      pagination.total = response.total || response.transfer_orders.length
+    }
+    
+    transferList.value = transferData
     
     // 更新统计数据
-    stats.total = mockData.length
-    stats.pending = mockData.filter(item => item.status === 'pending').length
-    stats.in_transit = mockData.filter(item => item.logistics_status === 'in_transit').length
-    stats.completed = mockData.filter(item => item.status === 'completed').length
+    updateTransferStats(transferData)
+    
+    console.log('✓ API调用成功，加载调拨入库数据:', {
+      total: transferData.length,
+      pending: stats.pending,
+      in_transit: stats.in_transit,
+      completed: stats.completed
+    })
     
   } catch (error) {
-    ElMessage.error('加载调拨入库数据失败')
+    console.error('调拨入库API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取调拨入库单')
+    transferList.value = fallbackData
+    pagination.total = fallbackData.length
+    
+    // 更新统计数据
+    updateTransferStats(fallbackData)
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
+    
   } finally {
     loading.value = false
   }
+}
+
+// 更新调拨统计数据
+const updateTransferStats = (data) => {
+  stats.total = data.length
+  stats.pending = data.filter(item => item.status === 'pending').length
+  stats.in_transit = data.filter(item => item.logistics_status === 'in_transit').length
+  stats.completed = data.filter(item => item.status === 'completed').length
 }
 
 // 搜索

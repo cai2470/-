@@ -248,6 +248,7 @@ import {
   Refresh, Box, Download, Upload, TrendCharts,
   ArrowUp, ArrowDown
 } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -313,22 +314,55 @@ const loadBasicData = async () => {
   try {
     loading.value = true
 
-    // 加载仓库数据
-    const warehouseList = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-    warehouses.value = warehouseList.filter(w => w.status === 1 || w.status === '启用').map(w => ({
+    // 安全地加载仓库数据
+    const warehouseStored = localStorage.getItem('wms_warehouses')
+    let warehouseList = []
+    
+    if (warehouseStored) {
+      try {
+        const parsed = JSON.parse(warehouseStored)
+        warehouseList = Array.isArray(parsed) ? parsed : []
+      } catch (error) {
+        console.warn('仓库数据解析失败:', error)
+        warehouseList = []
+      }
+    }
+    
+    warehouses.value = warehouseList.filter(w => w && (w.status === 1 || w.status === '启用')).map(w => ({
       id: w.id,
       name: w.name,
       code: w.code
     }))
 
-    // 加载库存数据
-    allInventoryData.value = JSON.parse(localStorage.getItem('inventory_stock') || '[]')
+    // 安全地加载库存数据
+    const inventoryStored = localStorage.getItem('inventory_stock')
+    try {
+      const inventoryParsed = inventoryStored ? JSON.parse(inventoryStored) : []
+      allInventoryData.value = Array.isArray(inventoryParsed) ? inventoryParsed : []
+    } catch (error) {
+      console.warn('库存数据解析失败:', error)
+      allInventoryData.value = []
+    }
 
-    // 加载入库单数据
-    allInboundOrders.value = JSON.parse(localStorage.getItem('inbound_orders') || '[]')
+    // 安全地加载入库单数据
+    const inboundStored = localStorage.getItem('inbound_orders')
+    try {
+      const inboundParsed = inboundStored ? JSON.parse(inboundStored) : []
+      allInboundOrders.value = Array.isArray(inboundParsed) ? inboundParsed : []
+    } catch (error) {
+      console.warn('入库单数据解析失败:', error)
+      allInboundOrders.value = []
+    }
 
-    // 加载出库单数据
-    allOutboundOrders.value = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
+    // 安全地加载出库单数据
+    const outboundStored = localStorage.getItem('outbound_orders')
+    try {
+      const outboundParsed = outboundStored ? JSON.parse(outboundStored) : []
+      allOutboundOrders.value = Array.isArray(outboundParsed) ? outboundParsed : []
+    } catch (error) {
+      console.warn('出库单数据解析失败:', error)
+      allOutboundOrders.value = []
+    }
 
     console.log('基础数据加载完成:', {
       warehouses: warehouses.value.length,
@@ -463,11 +497,25 @@ const updateWarehouseData = () => {
 const updateCategoryData = () => {
   const categoryStats = new Map()
 
-  // 加载商品数据获取分类信息
-  const products = JSON.parse(localStorage.getItem('wms_products') || '[]')
+  // 安全地加载商品数据获取分类信息
+  const productsStored = localStorage.getItem('wms_products')
+  let products = []
+  
+  if (productsStored) {
+    try {
+      const parsed = JSON.parse(productsStored)
+      products = Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      console.warn('商品数据解析失败:', error)
+      products = []
+    }
+  }
 
   allInventoryData.value.forEach(item => {
-    const product = products.find(p => p.code === item.product_code || p.id === item.product_id)
+    let product = null
+    if (Array.isArray(products) && products.length > 0) {
+      product = products.find(p => p && (p.code === item.product_code || p.id === item.product_id))
+    }
     const category = product?.category || '未分类'
 
     if (!categoryStats.has(category)) {
@@ -489,7 +537,10 @@ const updateCategoryData = () => {
   // 计算入库出库数量
   allInboundOrders.value.forEach(order => {
     (order.products || []).forEach(product => {
-      const productInfo = products.find(p => p.code === product.product_code || p.id === product.product_id)
+      let productInfo = null
+      if (Array.isArray(products) && products.length > 0) {
+        productInfo = products.find(p => p && (p.code === product.product_code || p.id === product.product_id))
+      }
       const category = productInfo?.category || '未分类'
       
       if (categoryStats.has(category)) {
@@ -500,7 +551,10 @@ const updateCategoryData = () => {
 
   allOutboundOrders.value.forEach(order => {
     (order.products || []).forEach(product => {
-      const productInfo = products.find(p => p.code === product.product_code || p.id === product.product_id)
+      let productInfo = null
+      if (Array.isArray(products) && products.length > 0) {
+        productInfo = products.find(p => p && (p.code === product.product_code || p.id === product.product_id))
+      }
       const category = productInfo?.category || '未分类'
       
       if (categoryStats.has(category)) {
@@ -520,7 +574,19 @@ const updateCategoryData = () => {
 
 // 更新汇总数据
 const updateSummaryData = () => {
-  const products = JSON.parse(localStorage.getItem('wms_products') || '[]')
+  // 安全地加载商品数据
+  const productsStored = localStorage.getItem('wms_products')
+  let products = []
+  
+  if (productsStored) {
+    try {
+      const parsed = JSON.parse(productsStored)
+      products = Array.isArray(parsed) ? parsed : []
+    } catch (error) {
+      console.warn('商品数据解析失败:', error)
+      products = []
+    }
+  }
   
   summaryData.totalProducts = products.length
   summaryData.totalStock = allInventoryData.value.reduce((sum, item) => sum + (item.current_stock || 0), 0)

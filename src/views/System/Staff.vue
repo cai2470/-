@@ -148,7 +148,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="scope">
             <el-button size="small" type="info" @click="viewStaff(scope.row)">查看</el-button>
             <el-button size="small" type="primary" @click="editStaff(scope.row)">编辑</el-button>
@@ -167,6 +167,14 @@
               @click="toggleStatus(scope.row)"
             >
               复职
+            </el-button>
+            <el-button 
+              size="small" 
+              type="danger" 
+              @click="deleteStaff(scope.row)"
+              :disabled="scope.row.status === 'active'"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -328,6 +336,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { wmsAPI } from '@/utils/api.js'
 
 const emit = defineEmits(['refresh'])
 
@@ -709,6 +718,38 @@ const toggleStatus = async (staff) => {
 
     ElMessage.success(`员工状态已更新`)
     loadStaffList()
+  } catch {
+    // 用户取消操作
+  }
+}
+
+// 删除员工
+const deleteStaff = async (staff) => {
+  if (staff.status === 'active') {
+    ElMessage.warning('在职员工不能删除，请先办理离职手续')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除员工 "${staff.name}" 吗？删除后将无法恢复！`,
+      '删除确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'error'
+      }
+    )
+
+    const staffData = JSON.parse(localStorage.getItem('wms_staff') || '[]')
+    const index = staffData.findIndex(s => s.id === staff.id)
+    if (index !== -1) {
+      staffData.splice(index, 1)
+      localStorage.setItem('wms_staff', JSON.stringify(staffData))
+      ElMessage.success(`员工 "${staff.name}" 已删除`)
+      loadStaffList()
+      emit('refresh')
+    }
   } catch {
     // 用户取消操作
   }

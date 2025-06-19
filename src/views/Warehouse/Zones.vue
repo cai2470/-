@@ -226,6 +226,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -289,28 +291,79 @@ const rules = {
   ]
 }
 
+// API降级处理函数
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
+  
+  // 从本地存储加载数据
+  const stored = localStorage.getItem('wms_zones')
+  if (stored) {
+    try {
+      const data = JSON.parse(stored)
+      return Array.isArray(data) ? data : []
+    } catch (parseError) {
+      console.error('解析本地存储数据失败:', parseError)
+      return []
+    }
+  }
+  return []
+}
+
 // 加载仓库列表
 const loadWarehouses = async () => {
   try {
-    // 从localStorage加载仓库数据
-    const storedWarehouses = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-    if (storedWarehouses.length > 0) {
-      warehouses.value = storedWarehouses.filter(w => w.status === 1).map(w => ({
-        id: w.id,
-        name: w.name,
-        code: w.code
-      }))
-    } else {
-      // 如果没有存储数据，使用默认数据
+    // 尝试API调用
+    const response = await wmsAPI.getWarehouses({ status: 1 })
+    
+    // 处理不同的响应格式
+    let data = []
+    if (Array.isArray(response)) {
+      data = response
+    } else if (response && Array.isArray(response.results)) {
+      data = response.results
+    } else if (response && Array.isArray(response.data)) {
+      data = response.data
+    } else if (response && Array.isArray(response.warehouses)) {
+      data = response.warehouses
+    }
+    
+    warehouses.value = data.filter(w => w.status === 1).map(w => ({
+      id: w.id,
+      name: w.name || '未知仓库',
+      code: w.code || 'UNKNOWN'
+    }))
+    
+    console.log('✓ API加载仓库列表成功:', warehouses.value.length, '个')
+    
+  } catch (error) {
+    console.error('加载仓库列表API失败，使用降级数据:', error)
+    
+    // API失败时从localStorage加载仓库数据
+    try {
+      const storedWarehouses = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+      if (Array.isArray(storedWarehouses) && storedWarehouses.length > 0) {
+        warehouses.value = storedWarehouses.filter(w => w.status === 1).map(w => ({
+          id: w.id,
+          name: w.name || '未知仓库',
+          code: w.code || 'UNKNOWN'
+        }))
+      } else {
+        // 如果没有存储数据，使用默认数据
+        warehouses.value = [
+          { id: 1, name: '主仓库', code: 'WH001' },
+          { id: 2, name: '北京仓库', code: 'WH002' },
+          { id: 3, name: '上海仓库', code: 'WH003' },
+          { id: 4, name: '深圳仓库', code: 'WH004' }
+        ]
+      }
+    } catch (parseError) {
+      console.error('解析仓库数据失败:', parseError)
+      // 出错时使用默认数据
       warehouses.value = [
         { id: 1, name: '主仓库', code: 'WH001' },
-        { id: 2, name: '北京仓库', code: 'WH002' },
-        { id: 3, name: '上海仓库', code: 'WH003' },
-        { id: 4, name: '深圳仓库', code: 'WH004' }
+        { id: 2, name: '北京仓库', code: 'WH002' }
       ]
     }
-  } catch (error) {
-    ElMessage.error('加载仓库列表失败')
   }
 }
 
@@ -340,27 +393,74 @@ const saveToStorage = (data) => {
 const loadZones = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // 构建查询参数
+    const params = {}
+    if (searchForm.warehouse_id) params.warehouse_id = searchForm.warehouse_id
+    if (searchForm.name) params.name = searchForm.name
+    if (searchForm.status !== '') params.status = searchForm.status
     
-    // 从本地存储加载数据
-    let data = loadFromStorage()
+    // 尝试API调用
+    const response = await wmsAPI.getZones(params)
     
-    // 如果没有数据，初始化为空数组，不再自动填充默认数据
-    if (!data) {
-      data = []
-      saveToStorage(data)
+    // 处理不同的响应格式
+    let data = []
+    if (Array.isArray(response)) {
+      data = response
+    } else if (response && Array.isArray(response.results)) {
+      data = response.results
+    } else if (response && Array.isArray(response.data)) {
+      data = response.data
+    } else if (response && Array.isArray(response.zones)) {
+      data = response.zones
     }
     
-    console.log('=== 库区管理数据加载 ===')
-    console.log('加载的库区数据:', data)
+    // 确保数据格式正确并添加仓库名称
+    zones.value = data.map(zone => {
+      const warehouse = warehouses.value.find(w => w.id === zone.warehouse_id)
+      return {
+        id: zone.id,
+        code: zone.code || '',
+        name: zone.name || '',
+        warehouse_id: zone.warehouse_id,
+        warehouse_name: warehouse?.name || zone.warehouse_name || '未知仓库',
+        type: zone.type || '',
+        area: zone.area || 0,
+        capacity: zone.capacity || 0,
+        max_height: zone.max_height || 0,
+        temperature: zone.temperature || '',
+        humidity: zone.humidity || '',
+        location_count: zone.location_count || 0,
+        status: zone.status || 1,
+        remark: zone.remark || ''
+      }
+    })
     
-    zones.value = data
-    pagination.total = data.length
+    pagination.total = zones.value.length
+    
+    console.log('✓ API调用成功，加载库区数据:', zones.value.length, '条')
     
   } catch (error) {
-    console.error('加载库区列表失败:', error)
-    ElMessage.error('加载库区列表失败')
+    console.error('库区列表API调用失败:', error)
+    
+    // API失败时的降级处理
+    const fallbackData = handleAPIFallback(error, '获取库区列表')
+    
+    // 处理降级数据并添加仓库名称
+    zones.value = fallbackData.map(zone => {
+      const warehouse = warehouses.value.find(w => w.id === zone.warehouse_id)
+      return {
+        ...zone,
+        warehouse_name: warehouse?.name || zone.warehouse_name || '未知仓库'
+      }
+    })
+    
+    pagination.total = zones.value.length
+    
+    // 检查是否启用降级模式
+    const enableLocalStorage = import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true'
+    if (!enableLocalStorage) {
+      ElMessage.warning('API连接失败，请检查网络连接')
+    }
   } finally {
     loading.value = false
   }
@@ -413,11 +513,26 @@ const toggleStatus = async (zone) => {
       }
     )
     
-    // 模拟状态切换
-    zone.status = zone.status === 1 ? 0 : 1
-    // 保存数据到本地存储
-    saveToStorage(zones.value)
-    ElMessage.success(`${action}成功`)
+    const newStatus = zone.status === 1 ? 0 : 1
+    
+    try {
+      // 尝试API更新
+      await wmsAPI.updateZone(zone.id, { status: newStatus })
+      
+      // API成功后更新本地数据
+      zone.status = newStatus
+      saveToStorage(zones.value)
+      ElMessage.success(`${action}成功`)
+      console.log('✓ API更新库区状态成功:', zone.name)
+      
+    } catch (apiError) {
+      console.error('API状态更新失败，使用本地更新:', apiError)
+      
+      // API失败时进行本地更新
+      zone.status = newStatus
+      saveToStorage(zones.value)
+      ElMessage.success(`${action}成功（本地模式）`)
+    }
   } catch {
     // 用户取消操作
   }
@@ -436,14 +551,32 @@ const deleteZone = async (zone) => {
       }
     )
     
-    // 从列表中删除
-    const index = zones.value.findIndex(z => z.id === zone.id)
-    if (index !== -1) {
-      zones.value.splice(index, 1)
-      pagination.total = zones.value.length
-      // 保存数据到本地存储
-      saveToStorage(zones.value)
+    try {
+      // 尝试API删除
+      await wmsAPI.deleteZone(zone.id)
+      
+      // API成功后更新本地数据
+      const index = zones.value.findIndex(z => z.id === zone.id)
+      if (index !== -1) {
+        zones.value.splice(index, 1)
+        pagination.total = zones.value.length
+        saveToStorage(zones.value)
+      }
+      
       ElMessage.success('删除成功')
+      console.log('✓ API删除库区成功:', zone.name)
+      
+    } catch (apiError) {
+      console.error('API删除失败，使用本地删除:', apiError)
+      
+      // API失败时进行本地删除
+      const index = zones.value.findIndex(z => z.id === zone.id)
+      if (index !== -1) {
+        zones.value.splice(index, 1)
+        pagination.total = zones.value.length
+        saveToStorage(zones.value)
+        ElMessage.success('删除成功（本地模式）')
+      }
     }
   } catch {
     // 用户取消操作
@@ -458,35 +591,81 @@ const saveZone = async () => {
     await formRef.value.validate()
     saving.value = true
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // 模拟数据更新
-    if (zoneForm.id) {
-      // 编辑模式
-      const index = zones.value.findIndex(z => z.id === zoneForm.id)
-      if (index !== -1) {
+    try {
+      let result
+      if (zoneForm.id) {
+        // 编辑模式 - API调用
+        result = await wmsAPI.updateZone(zoneForm.id, zoneForm)
+        
+        // API成功后更新本地数据
+        const index = zones.value.findIndex(z => z.id === zoneForm.id)
+        if (index !== -1) {
+          const warehouseName = warehouses.value.find(w => w.id === zoneForm.warehouse_id)?.name || ''
+          zones.value[index] = { 
+            ...zoneForm, 
+            warehouse_name: warehouseName, 
+            location_count: zones.value[index].location_count, 
+            status: zones.value[index].status 
+          }
+        }
+        ElMessage.success('编辑成功')
+        console.log('✓ API更新库区成功:', zoneForm.name)
+      } else {
+        // 添加模式 - API调用
+        result = await wmsAPI.createZone(zoneForm)
+        
+        // API成功后添加到本地数据
         const warehouseName = warehouses.value.find(w => w.id === zoneForm.warehouse_id)?.name || ''
-        zones.value[index] = { ...zoneForm, warehouse_name: warehouseName, location_count: zones.value[index].location_count, status: zones.value[index].status }
+        const newZone = {
+          ...zoneForm,
+          id: result.id || Date.now(),
+          warehouse_name: warehouseName,
+          location_count: 0,
+          status: 1
+        }
+        zones.value.unshift(newZone)
+        pagination.total = zones.value.length
+        ElMessage.success('添加成功')
+        console.log('✓ API创建库区成功:', zoneForm.name)
       }
-      ElMessage.success('编辑成功')
-    } else {
-      // 添加模式
-      const warehouseName = warehouses.value.find(w => w.id === zoneForm.warehouse_id)?.name || ''
-      const newZone = {
-        ...zoneForm,
-        id: Date.now(),
-        warehouse_name: warehouseName,
-        location_count: 0,
-        status: 1
+      
+      // 保存数据到本地存储
+      saveToStorage(zones.value)
+      
+    } catch (apiError) {
+      console.error('API保存失败，使用本地保存:', apiError)
+      
+      // API失败时的本地保存
+      if (zoneForm.id) {
+        // 编辑模式
+        const index = zones.value.findIndex(z => z.id === zoneForm.id)
+        if (index !== -1) {
+          const warehouseName = warehouses.value.find(w => w.id === zoneForm.warehouse_id)?.name || ''
+          zones.value[index] = { 
+            ...zoneForm, 
+            warehouse_name: warehouseName, 
+            location_count: zones.value[index].location_count, 
+            status: zones.value[index].status 
+          }
+        }
+        ElMessage.success('编辑成功（本地模式）')
+      } else {
+        // 添加模式
+        const warehouseName = warehouses.value.find(w => w.id === zoneForm.warehouse_id)?.name || ''
+        const newZone = {
+          ...zoneForm,
+          id: Date.now(),
+          warehouse_name: warehouseName,
+          location_count: 0,
+          status: 1
+        }
+        zones.value.unshift(newZone)
+        pagination.total = zones.value.length
+        ElMessage.success('添加成功（本地模式）')
       }
-      zones.value.unshift(newZone)
-      pagination.total = zones.value.length
-      ElMessage.success('添加成功')
+      
+      saveToStorage(zones.value)
     }
-    
-    // 保存数据到本地存储
-    saveToStorage(zones.value)
     
     dialogVisible.value = false
     resetForm()
@@ -530,8 +709,8 @@ const handleCurrentChange = (page) => {
   loadZones()
 }
 
-onMounted(() => {
-  loadWarehouses()
+onMounted(async () => {
+  await loadWarehouses()
   loadZones()
 })
 </script>

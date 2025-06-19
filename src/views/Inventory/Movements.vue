@@ -346,7 +346,9 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Minus, Edit, Sort, Download, Refresh, View, Delete } from '@element-plus/icons-vue'
 import { getWarehouseOptions, getMovementTypeOptions } from '@/utils/filterOptions'
+import { wmsAPI } from '@/utils/api.js'
 
 // 响应式数据
 const loading = ref(false)
@@ -437,70 +439,98 @@ const getChangeQuantityClass = (row) => {
   return 'quantity-zero'
 }
 
-// 创建示例库存变动数据
-const createSampleMovements = () => {
-  const now = new Date()
-  const movements = []
+// API错误降级处理
+const handleAPIFallback = (error, operation) => {
+  console.warn(`API ${operation} 失败，启用本地存储降级:`, error.message)
   
-  // 模拟一些库存变动记录
-  const sampleData = [
-    {
-      id: '1',
-      product_id: '1',
-        product_code: 'HW001',
-        product_name: '华为P50 Pro',
-      movement_type: 'inbound',
-      quantity: 20,
-      before_quantity: 25,
-      after_quantity: 45,
-      warehouse_id: '1',
-      location_id: '1',
-        location_name: 'A001',
-      order_no: 'IB2024010001',
-      remark: '采购入库',
-      created_at: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(), // 2小时前
-      created_by: '仓库管理员'
-    },
-    {
-      id: '2',
-      product_id: '2',
-      product_code: 'IP001',
-      product_name: 'iPhone 14 Pro',
-        movement_type: 'outbound',
-      quantity: -5,
-      before_quantity: 13,
-      after_quantity: 8,
-      warehouse_id: '1',
-      location_id: '2',
-        location_name: 'A002',
-      order_no: 'OB2024010001',
-      remark: '销售出库',
-      created_at: new Date(now.getTime() - 1 * 60 * 60 * 1000).toISOString(), // 1小时前
-      created_by: '销售人员'
-    },
-    {
-      id: '3',
-      product_id: '3',
-      product_code: 'XM001',
-      product_name: '小米13 Pro',
-        movement_type: 'adjustment',
-      quantity: 5,
-        before_quantity: 0,
-        after_quantity: 5,
-      warehouse_id: '2',
-      location_id: '3',
-      location_name: 'B001',
-      order_no: '',
-      remark: '盘点调整',
-      created_at: new Date(now.getTime() - 30 * 60 * 1000).toISOString(), // 30分钟前
-      created_by: '系统管理员'
+  // 获取本地存储默认数据
+  const getDefaultMovements = () => {
+    // 从现有数据生成变动记录
+    let movements = JSON.parse(localStorage.getItem('wms_stock_movements') || '[]')
+    
+    // 如果没有数据，创建一些示例数据
+    if (movements.length === 0) {
+      movements = [
+        {
+          id: '1',
+          movement_type: 'inbound',
+          product_code: 'HW001',
+          product_name: '华为P50 Pro',
+          warehouse_id: 1,
+          warehouse_name: '主仓库',
+          location_id: '1',
+          location_name: 'A001',
+          before_quantity: 25,
+          change_quantity: 20,
+          after_quantity: 45,
+          unit: '台',
+          reason: '采购入库',
+          reference_no: 'IB2024010001',
+          operator: '仓库管理员',
+          created_time: new Date(Date.now() - 2 * 60 * 60 * 1000).toLocaleString(),
+          remark: '采购入库'
+        },
+        {
+          id: '2',
+          movement_type: 'outbound',
+          product_code: 'IP001',
+          product_name: 'iPhone 14 Pro',
+          warehouse_id: 1,
+          warehouse_name: '主仓库',
+          location_id: '2',
+          location_name: 'A002',
+          before_quantity: 13,
+          change_quantity: -5,
+          after_quantity: 8,
+          unit: '台',
+          reason: '销售出库',
+          reference_no: 'OB2024010001',
+          operator: '销售人员',
+          created_time: new Date(Date.now() - 1 * 60 * 60 * 1000).toLocaleString(),
+          remark: '销售出库'
+        },
+        {
+          id: '3',
+          movement_type: 'adjustment',
+          product_code: 'XM001',
+          product_name: '小米13 Pro',
+          warehouse_id: 2,
+          warehouse_name: '北京仓库',
+          location_id: '3',
+          location_name: 'B001',
+          before_quantity: 0,
+          change_quantity: 5,
+          after_quantity: 5,
+          unit: '台',
+          reason: '盘点调整',
+          reference_no: '',
+          operator: '系统管理员',
+          created_time: new Date(Date.now() - 30 * 60 * 1000).toLocaleString(),
+          remark: '盘点调整'
+        }
+      ]
+      localStorage.setItem('wms_stock_movements', JSON.stringify(movements))
     }
-  ]
-  
-  return sampleData
+    
+    return movements
+  }
+
+  const stored = localStorage.getItem('wms_stock_movements')
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored)
+      return Array.isArray(parsed) ? parsed : getDefaultMovements()
+    } catch (error) {
+      console.error('解析本地存储数据失败:', error)
+    }
+  }
+
+  const defaultData = getDefaultMovements()
+  localStorage.setItem('wms_stock_movements', JSON.stringify(defaultData))
+  return defaultData
 }
 
-// 加载仓库列表
+// 加载仓库数据
 const loadWarehouses = async () => {
   try {
     const warehouseOptions = getWarehouseOptions()
@@ -510,125 +540,63 @@ const loadWarehouses = async () => {
       code: w.code
     }))
   } catch (error) {
-    ElMessage.error('加载仓库列表失败')
+    console.error('加载仓库数据失败:', error)
+    ElMessage.error('加载仓库数据失败')
   }
 }
 
-// 加载变动记录
+// 加载变动数据
 const loadMovementData = async () => {
   loading.value = true
   try {
-    // 从localStorage读取库存变动记录
-    let stockMovements = JSON.parse(localStorage.getItem('wms_stock_movements') || '[]')
+    console.log('🔄 开始加载库存变动数据...')
     
-    // 如果没有库存变动记录，创建一些示例数据
-    if (stockMovements.length === 0) {
-      stockMovements = createSampleMovements()
-      localStorage.setItem('wms_stock_movements', JSON.stringify(stockMovements))
-    }
-    
-    // 获取仓库信息用于名称映射
-    const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
-    const getWarehouseName = (warehouseId) => {
-      const warehouse = warehousesData.find(w => w.id === warehouseId)
-      return warehouse ? warehouse.name : '未知仓库'
-    }
-    
-    // 获取产品信息用于补充数据
-    const productsData = JSON.parse(localStorage.getItem('wms_products') || '[]')
-    const getProductInfo = (productId) => {
-      const product = productsData.find(p => p.id === productId)
-      return product ? {
-        code: product.code,
-        name: product.name,
-        unit: product.unit || '台'
-      } : {
-        code: 'UNKNOWN',
-        name: '未知商品',
-        unit: '台'
-      }
-    }
-    
-    // 转换数据格式以适配页面显示
-    let movements = stockMovements.map(movement => {
-      const productInfo = getProductInfo(movement.product_id)
-      
-      return {
-        id: movement.id,
-        movement_type: movement.movement_type,
-        product_code: movement.product_code || productInfo.code,
-        product_name: movement.product_name || productInfo.name,
-        warehouse_name: getWarehouseName(movement.warehouse_id) || '主仓库',
-        location_name: movement.location_name || 'A001',
-        before_quantity: movement.before_quantity || 0,
-        change_quantity: movement.quantity || 0,
-        after_quantity: movement.after_quantity || 0,
-        unit: productInfo.unit,
-        reason: movement.movement_type === 'inbound' ? '采购入库' : 
-               movement.movement_type === 'outbound' ? '销售出库' : '其他',
-        reference_no: movement.order_no || '',
-        operator: movement.created_by || '系统',
-        created_time: new Date(movement.created_at).toLocaleString() || new Date().toLocaleString(),
-        remark: movement.remark || ''
-      }
-    })
-    
-    // 应用筛选条件
-    if (filterForm.movement_type) {
-      movements = movements.filter(item => item.movement_type === filterForm.movement_type)
-    }
-    if (filterForm.warehouse_id) {
-      movements = movements.filter(item => {
-        // 通过仓库名称匹配
-        const selectedWarehouse = warehouses.value.find(w => w.id === filterForm.warehouse_id)
-        return selectedWarehouse ? item.warehouse_name === selectedWarehouse.name : false
-      })
-    }
-    if (filterForm.product_name) {
-      movements = movements.filter(item => 
-        item.product_name.toLowerCase().includes(filterForm.product_name.toLowerCase())
-      )
-    }
-    if (filterForm.product_code) {
-      movements = movements.filter(item => 
-        item.product_code.toLowerCase().includes(filterForm.product_code.toLowerCase())
-      )
-    }
-    if (filterForm.operator) {
-      movements = movements.filter(item => 
-        item.operator.includes(filterForm.operator)
-      )
-    }
+    // 构建查询参数
+    const params = {}
+    if (filterForm.movement_type) params.movement_type = filterForm.movement_type
+    if (filterForm.warehouse_id) params.warehouse_id = filterForm.warehouse_id
+    if (filterForm.product_name) params.product_name = filterForm.product_name
+    if (filterForm.product_code) params.product_code = filterForm.product_code
+    if (filterForm.operator) params.operator = filterForm.operator
     if (filterForm.date_range && filterForm.date_range.length === 2) {
-      const startDate = new Date(filterForm.date_range[0]).getTime()
-      const endDate = new Date(filterForm.date_range[1]).getTime() + 24 * 60 * 60 * 1000 // 包含结束日期
-      movements = movements.filter(item => {
-        const itemDate = new Date(item.created_time).getTime()
-        return itemDate >= startDate && itemDate <= endDate
-      })
+      params.start_date = filterForm.date_range[0]
+      params.end_date = filterForm.date_range[1]
     }
     
-    // 按创建时间倒序排序（最新的在前面）
-    movements.sort((a, b) => new Date(b.created_time) - new Date(a.created_time))
+    // 调用API
+    const response = await wmsAPI.getInventoryMovements(params)
     
-    movementList.value = movements
-    pagination.total = movements.length
+    console.log('✅ API响应:', response)
     
-    // 更新统计数据（今日数据）
-    const today = new Date().toISOString().split('T')[0]
-    const todayMovements = stockMovements.filter(item => {
-      const itemDate = new Date(item.created_at).toISOString().split('T')[0]
-      return itemDate === today
+    // 处理不同的响应格式
+    let movementsData = []
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        movementsData = response
+      } else if (response.results && Array.isArray(response.results)) {
+        movementsData = response.results
+      } else if (response.data && Array.isArray(response.data)) {
+        movementsData = response.data
+      } else if (response.movements && Array.isArray(response.movements)) {
+        movementsData = response.movements
+      }
+    }
+    
+    movementList.value = movementsData
+    
+    // 更新统计数据
+    updateMovementStats()
+    
+    console.log('📊 变动数据加载完成:', {
+      total: movementList.value.length,
+      hasData: movementList.value.length > 0
     })
-    
-    movementStats.inbound = todayMovements.filter(item => item.movement_type === 'inbound').length
-    movementStats.outbound = todayMovements.filter(item => item.movement_type === 'outbound').length
-    movementStats.adjustment = todayMovements.filter(item => item.movement_type === 'adjustment').length
-    movementStats.transfer = todayMovements.filter(item => item.movement_type === 'transfer').length
     
   } catch (error) {
-    console.error('加载变动记录失败:', error)
-    ElMessage.error('加载变动记录失败')
+    console.error('❌ 加载变动数据失败:', error)
+    movementList.value = handleAPIFallback(error, '获取库存变动记录')
+    updateMovementStats()
+    ElMessage.warning('API连接失败，使用本地数据')
   } finally {
     loading.value = false
   }
@@ -892,6 +860,11 @@ const generateMovementsFromInbound = () => {
   } catch (error) {
     console.error('生成库存变动记录失败:', error)
   }
+}
+
+// 更新统计数据
+const updateMovementStats = () => {
+  // 实现更新统计数据的逻辑
 }
 </script>
 

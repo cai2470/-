@@ -151,6 +151,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
+import wmsAPI from '@/utils/api'
 
 // 响应式数据
 const loading = ref(false)
@@ -198,25 +200,16 @@ const rules = {
   ]
 }
 
-// 从本地存储加载数据
-const loadFromStorage = () => {
-  const stored = localStorage.getItem('wms_brands')
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch (error) {
-      console.error('解析本地存储数据失败:', error)
-    }
-  }
-  return null
-}
-
-// 保存数据到本地存储
-const saveToStorage = (data) => {
-  try {
-    localStorage.setItem('wms_brands', JSON.stringify(data))
-  } catch (error) {
-    console.error('保存到本地存储失败:', error)
+// API降级处理
+const handleAPIFallback = (error, operation = '操作') => {
+  console.warn(`⚠️ ${operation}API请求失败:`, error.message)
+  
+  if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+    ElMessage.warning(`${operation}失败，使用本地降级方案`)
+    return true
+  } else {
+    ElMessage.error(`${operation}失败，请检查网络连接`)
+    return false
   }
 }
 
@@ -306,21 +299,73 @@ const getDefaultBrands = () => [
 const loadBrands = async () => {
   loading.value = true
   try {
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 300))
+    console.log('🔄 正在从API加载品牌列表...')
     
-    // 先尝试从本地存储加载，如果没有则使用默认数据
-    let data = loadFromStorage()
-    if (!data || data.length === 0) {
-      data = getDefaultBrands()
-      saveToStorage(data)
+    // 构建搜索参数
+    const params = {
+      page: pagination.page,
+      page_size: pagination.size,
+      search: searchForm.name || '',
+      status: searchForm.status
     }
     
-    brands.value = data
+    // 调用API获取品牌列表
+    const response = await wmsAPI.getBrands(params)
+    console.log('✅ 品牌API响应成功:', response)
+    
+    let data = []
+    
+    // 处理不同的API响应格式
+    if (response.results && Array.isArray(response.results)) {
+      // DRF标准分页格式
+      data = response.results
+      pagination.total = response.count || 0
+    } else if (response.brands && Array.isArray(response.brands)) {
+      // 自定义格式
+      data = response.brands
+      pagination.total = response.total || data.length
+    } else if (Array.isArray(response)) {
+      // 直接返回数组
+      data = response
     pagination.total = data.length
+    } else {
+      throw new Error('API返回数据格式不正确')
+    }
+    
+    // 转换API数据格式以适配前端显示
+    brands.value = data.map(brand => ({
+      id: brand.id,
+      code: brand.code || `BRAND${brand.id}`,
+      name: brand.name,
+      name_en: brand.name_en || brand.name,
+      country: brand.country || '未知',
+      founded_year: brand.founded_year || new Date().getFullYear(),
+      sort: brand.sort || 99,
+      logo: brand.logo || '',
+      description: brand.description || '',
+      product_count: brand.product_count || 0,
+      status: brand.status === 'active' ? 1 : (brand.status || 1)
+    }))
+    
+    console.log(`✅ 成功加载 ${brands.value.length} 个品牌`)
+    
+    if (brands.value.length === 0) {
+      ElMessage.info('暂无品牌数据')
+    }
     
   } catch (error) {
-    ElMessage.error('加载品牌列表失败')
+    console.error('❌ 加载品牌列表失败:', error)
+    
+    // 根据环境变量决定是否使用降级方案
+    if (handleAPIFallback(error, '加载品牌列表')) {
+      // 使用默认数据作为降级方案
+      brands.value = getDefaultBrands()
+      pagination.total = brands.value.length
+      ElMessage.info('已加载演示数据')
+    } else {
+      brands.value = []
+      pagination.total = 0
+    }
   } finally {
     loading.value = false
   }

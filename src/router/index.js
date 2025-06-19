@@ -199,12 +199,6 @@ const routes = [
         name: 'SystemLogs',
         component: () => import('@/views/System/Logs.vue'),
         meta: { title: '系统日志' }
-      },
-      {
-        path: 'system/settings',
-        name: 'SystemSettings',
-        component: () => import('@/views/System/Settings.vue'),
-        meta: { title: '系统设置' }
       }
     ]
   },
