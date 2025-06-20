@@ -80,7 +80,7 @@
       <el-card class="stat-card">
         <div class="stat-content">
           <div class="stat-icon vip">
-            <el-icon><Crown /></el-icon>
+            <el-icon><Trophy /></el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ customerStats.vip }}</div>
@@ -295,7 +295,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Plus, User, Crown, Check, Star
+  Plus, User, Trophy, Check, Star
 } from '@element-plus/icons-vue'
 
 // 格式化数字

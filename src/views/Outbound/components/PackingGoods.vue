@@ -358,7 +358,7 @@ const loadTableData = async () => {
   loading.value = true
   try {
     const params = {
-      status: 'packing',
+      status: 'picking',
       page: pagination.page,
       page_size: pagination.size,
       ...filterForm
@@ -410,7 +410,7 @@ const loadTableDataFromLocalStorage = () => {
     console.log('PackingGoods - 从localStorage获取出库单数据:', orders)
     
     // 筛选待打包状态的订单
-    let packingOrders = orders.filter(order => order.status === 'packing')
+    let packingOrders = orders.filter(order => order.status === 'picking')
     console.log('PackingGoods - 筛选出的打包订单:', packingOrders)
     console.log('PackingGoods - 打包订单数量:', packingOrders.length)
     

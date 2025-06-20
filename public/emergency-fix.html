@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS紧急修复工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn {
+            background: #409eff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 16px;
+        }
+        .btn:hover { background: #66b1ff; }
+        .btn.danger { background: #f56c6c; }
+        .btn.danger:hover { background: #f78989; }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #409eff;
+            background: #ecf5ff;
+        }
+        .error { border-color: #f56c6c; background: #fef0f0; }
+        .success { border-color: #67c23a; background: #f0f9ff; }
+        .code-block {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛠️ WMS紧急修复工具</h1>
+        <p>如果您无法登录或遇到localStorage错误，请使用此工具进行修复。</p>
+        
+        <div id="status" class="status">
+            📋 准备就绪，点击下方按钮开始修复...
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <button class="btn" onclick="checkStatus()">🔍 检查系统状态</button>
+            <button class="btn danger" onclick="cleanStorage()">🧹 清理本地数据</button>
+            <button class="btn" onclick="resetAuth()">🔒 重置认证</button>
+            <button class="btn" onclick="goToLogin()">🚀 返回登录</button>
+        </div>
+        
+        <h3>📖 修复步骤说明：</h3>
+        <ol>
+            <li><strong>检查系统状态</strong> - 查看当前localStorage数据状态</li>
+            <li><strong>清理本地数据</strong> - 清理所有业务数据，保留登录信息</li>
+            <li><strong>重置认证</strong> - 清理认证token，强制重新登录</li>
+            <li><strong>返回登录</strong> - 跳转到登录页面</li>
+        </ol>
+        
+        <h3>🎯 推荐登录账号：</h3>
+        <div class="code-block">
+管理员: admin / admin123
+仓库管理员: manager / manager123
+操作员: operator / operator123
+        </div>
+        
+        <div id="details" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        const STATUS_EL = document.getElementById('status');
+        const DETAILS_EL = document.getElementById('details');
+        
+        function updateStatus(message, type = 'info') {
+            STATUS_EL.className = `status ${type}`;
+            STATUS_EL.innerHTML = message;
+        }
+        
+        function checkStatus() {
+            updateStatus('🔍 正在检查系统状态...', 'info');
+            
+            const businessKeys = [
+                'wms_suppliers', 'wms_warehouses', 'wms_products', 'wms_categories',
+                'wms_brands', 'wms_users', 'wms_staff', 'wms_customers', 'wms_zones',
+                'wms_locations', 'inventory_stock', 'inbound_orders', 'outbound_orders'
+            ];
+            
+            const authKeys = [
+                'wms_token', 'wms_access_token', 'access_token', 'wms_user_info'
+            ];
+            
+            let businessCount = 0;
+            let authCount = 0;
+            let totalSize = 0;
+            
+            businessKeys.forEach(key => {
+                const data = localStorage.getItem(key);
+                if (data) {
+                    businessCount++;
+                    totalSize += data.length;
+                }
+            });
+            
+            authKeys.forEach(key => {
+                if (localStorage.getItem(key)) {
+                    authCount++;
+                }
+            });
+            
+            const status = `
+                📊 系统状态检查完成：<br>
+                • 业务数据项: ${businessCount} 个<br>
+                • 认证数据项: ${authCount} 个<br>
+                • 总数据大小: ${(totalSize/1024).toFixed(2)} KB<br>
+                • 建议: ${businessCount > 0 ? '清理业务数据以避免数据冲突' : '数据状态正常'}
+            `;
+            
+            updateStatus(status, businessCount > 0 ? 'error' : 'success');
+        }
+        
+        function cleanStorage() {
+            updateStatus('🧹 正在清理本地数据...', 'info');
+            
+            const businessKeys = [
+                'wms_suppliers', 'wms_warehouses', 'wms_products', 'wms_categories',
+                'wms_brands', 'wms_users', 'wms_staff', 'wms_customers', 'wms_zones',
+                'wms_locations', 'wms_roles', 'wms_permissions', 'inventory_stock',
+                'inbound_orders', 'outbound_orders', 'wms_stock_movements',
+                'inventory_counts', 'wms_alerts', 'stock_movements'
+            ];
+            
+            let removedCount = 0;
+            
+            businessKeys.forEach(key => {
+                if (localStorage.getItem(key)) {
+                    localStorage.removeItem(key);
+                    removedCount++;
+                }
+            });
+            
+            updateStatus(`✅ 清理完成！已删除 ${removedCount} 个业务数据项，保留系统配置。`, 'success');
+        }
+        
+        function resetAuth() {
+            updateStatus('🔒 正在重置认证...', 'info');
+            
+            const authKeys = [
+                'wms_token', 'wms_access_token', 'access_token', 'wms_refresh_token',
+                'refresh_token', 'wms_user_info', 'user_info'
+            ];
+            
+            let removedCount = 0;
+            
+            authKeys.forEach(key => {
+                if (localStorage.getItem(key)) {
+                    localStorage.removeItem(key);
+                    removedCount++;
+                }
+            });
+            
+            updateStatus(`🔓 认证重置完成！已清理 ${removedCount} 个认证项，请重新登录。`, 'success');
+        }
+        
+        function goToLogin() {
+            updateStatus('🚀 正在跳转到登录页...', 'info');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000);
+        }
+        
+        // 页面加载时自动检查状态
+        window.onload = function() {
+            setTimeout(checkStatus, 500);
+        };
+    </script>
+</body>
+</html> 

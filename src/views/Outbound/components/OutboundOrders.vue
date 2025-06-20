@@ -1106,7 +1106,7 @@ const confirmOrderInLocalStorage = async (order) => {
     const orders = JSON.parse(localStorage.getItem('outbound_orders') || '[]')
     const index = orders.findIndex(o => o.id === order.id)
     if (index !== -1) {
-      orders[index].status = 'pre_delivery'
+              orders[index].status = 'shipped'
       orders[index].confirmed_at = new Date().toLocaleString()
       orders[index].stock_reduced = true // 标记库存已扣减
       orders[index].stock_reductions = stockReductions // 记录扣减明细

@@ -193,27 +193,48 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="品牌" prop="brand">
-              <el-input 
-                v-model="productForm.brand" 
-                placeholder="请输入品牌" 
-                style="width: 100%"
-              />
+              <el-select v-model="productForm.brand" placeholder="请选择品牌" style="width: 100%">
+                <el-option 
+                  v-for="brand in availableBrands" 
+                  :key="brand.id"
+                  :label="brand.name" 
+                  :value="brand.id" 
+                />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
         
         <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="单位" prop="unit">
-              <el-select v-model="productForm.unit" placeholder="选择单位" style="width: 100%">
-                <el-option label="台" value="台" />
-                <el-option label="个" value="个" />
-                <el-option label="件" value="件" />
-                <el-option label="箱" value="箱" />
-                <el-option label="套" value="套" />
+          <el-col :span="12">
+            <el-form-item label="供应商" prop="supplier">
+              <el-select v-model="productForm.supplier" placeholder="请选择供应商" style="width: 100%">
+                <el-option 
+                  v-for="supplier in availableSuppliers" 
+                  :key="supplier.id"
+                  :label="supplier.name" 
+                  :value="supplier.id" 
+                />
               </el-select>
             </el-form-item>
           </el-col>
+          <el-col :span="12">
+            <el-form-item label="单位" prop="unit">
+              <el-select v-model="productForm.unit" placeholder="选择单位" style="width: 100%">
+                <el-option label="台" value="unit" />
+                <el-option label="个" value="piece" />
+                <el-option label="件" value="piece" />
+                <el-option label="箱" value="box" />
+                <el-option label="套" value="set" />
+                <el-option label="包" value="pack" />
+                <el-option label="瓶" value="bottle" />
+                <el-option label="袋" value="bag" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="单价($)" prop="price">
               <el-input-number 
@@ -442,6 +463,7 @@ const productForm = reactive({
   name: '',
   category: '',
   brand: '',
+  supplier: '',
   unit: '',
   price: 0,
   min_stock: 10,
@@ -464,6 +486,12 @@ const products = ref([])
 // 可用分类列表
 const availableCategories = ref([])
 
+// 可用品牌列表
+const availableBrands = ref([])
+
+// 可用供应商列表
+const availableSuppliers = ref([])
+
 // 表单验证规则
 const rules = {
   code: [
@@ -476,7 +504,10 @@ const rules = {
     { required: true, message: '请选择商品分类', trigger: 'change' }
   ],
   brand: [
-    { required: true, message: '请输入品牌', trigger: 'blur' }
+    { required: true, message: '请选择品牌', trigger: 'change' }
+  ],
+  supplier: [
+    { required: true, message: '请选择供应商', trigger: 'change' }
   ],
   unit: [
     { required: true, message: '请选择单位', trigger: 'change' }
@@ -708,6 +739,72 @@ const resetSearch = () => {
 // 加载可用分类
 const loadAvailableCategories = () => {
   availableCategories.value = getAllCategoryOptions()
+}
+
+// 加载可用品牌
+const loadAvailableBrands = async () => {
+  try {
+    console.log('🔄 正在加载品牌列表...')
+    const response = await wmsAPI.getBrands()
+    
+    let brandsData = []
+    if (response && response.results && Array.isArray(response.results)) {
+      brandsData = response.results
+    } else if (Array.isArray(response)) {
+      brandsData = response
+    }
+    
+    availableBrands.value = brandsData.map(brand => ({
+      id: brand.id,
+      name: brand.name,
+      code: brand.code
+    }))
+    
+    console.log(`✅ 成功加载 ${availableBrands.value.length} 个品牌`)
+    
+  } catch (error) {
+    console.error('❌ 加载品牌列表失败:', error)
+    // 使用默认品牌数据
+    availableBrands.value = [
+      { id: 1, name: '华为', code: 'HUAWEI' },
+      { id: 2, name: '小米', code: 'XIAOMI' },
+      { id: 3, name: '苹果', code: 'APPLE' },
+      { id: 4, name: '联想', code: 'LENOVO' }
+    ]
+  }
+}
+
+// 加载可用供应商
+const loadAvailableSuppliers = async () => {
+  try {
+    console.log('🔄 正在加载供应商列表...')
+    const response = await wmsAPI.getSuppliers()
+    
+    let suppliersData = []
+    if (response && response.results && Array.isArray(response.results)) {
+      suppliersData = response.results
+    } else if (Array.isArray(response)) {
+      suppliersData = response
+    }
+    
+    availableSuppliers.value = suppliersData.map(supplier => ({
+      id: supplier.id,
+      name: supplier.name,
+      code: supplier.code
+    }))
+    
+    console.log(`✅ 成功加载 ${availableSuppliers.value.length} 个供应商`)
+    
+  } catch (error) {
+    console.error('❌ 加载供应商列表失败:', error)
+    // 使用默认供应商数据
+    availableSuppliers.value = [
+      { id: 1, name: '华为技术有限公司', code: 'HUAWEI' },
+      { id: 2, name: '小米科技有限公司', code: 'XIAOMI' },
+      { id: 3, name: '苹果电子产品商贸有限公司', code: 'APPLE' },
+      { id: 4, name: '联想集团有限公司', code: 'LENOVO' }
+    ]
+  }
 }
 
 // 显示批量导入对话框
@@ -1012,85 +1109,96 @@ const saveProduct = async () => {
     await formRef.value.validate()
     saving.value = true
     
+    // 🔧 修复字段映射 - 获取分类和品牌ID
+    let categoryId = productForm.category
+    let brandId = productForm.brand
+    
+    // 如果传递的是名称，需要转换为ID
+    if (typeof categoryId === 'string') {
+      const categoryOption = availableCategories.value.find(c => c.label === categoryId)
+      categoryId = categoryOption ? categoryOption.value : categoryId
+    }
+    
+    // 获取品牌列表并查找品牌ID
+    try {
+      const brandsResponse = await wmsAPI.getBrands()
+      const brands = brandsResponse.results || brandsResponse || []
+      
+      if (typeof brandId === 'string') {
+        const brandOption = brands.find(b => b.name === brandId)
+        brandId = brandOption ? brandOption.id : null
+      }
+    } catch (error) {
+      console.warn('获取品牌列表失败:', error)
+    }
+    
+    // 🔧 修复单位映射 - 表单现在直接使用后端格式
+    const mappedUnit = productForm.unit || 'unit'
+    
     // 处理图片数据
     const processedImages = productForm.images.map(img => ({
       name: img.name,
       url: img.url || img.response?.url || ''
     }))
     
+    // 🔧 构建符合后端格式的数据
     const productData = {
-      ...productForm,
-      images: processedImages,
-      image: processedImages.length > 0 ? processedImages[0].url : null,
-      status: productForm.id ? undefined : 'active' // 新商品默认激活状态
-    }
-    
-    // 调用API
-    let response
-    if (productForm.id) {
-      // 编辑模式 - 调用更新API
-      response = await wmsAPI.updateProduct(productForm.id, productData)
-      ElMessage.success('商品编辑成功')
-    } else {
-      // 添加模式 - 调用创建API
-      response = await wmsAPI.createProduct(productData)
-      ElMessage.success('商品添加成功')
-    }
-    
-    dialogVisible.value = false
-    resetForm()
-    
-    // 重新加载商品列表
-    await loadProducts()
-    
-  } catch (error) {
-    console.error('保存商品失败:', error)
-    
-    if (error !== false) {
-      // API失败时的降级处理
-      if (handleAPIFallback(error, '保存商品')) {
-        // 降级方案：使用本地数据模拟
-    const processedImages = productForm.images.map(img => ({
-      name: img.name,
-      url: img.url || img.response?.url || ''
-    }))
-    
-    const productData = {
-      ...productForm,
+      name: productForm.name,
+      code: productForm.code,
+      barcode: productForm.barcode || '',
+      category_id: categoryId,
+      brand_id: brandId,
+      supplier_id: productForm.supplier,
+      description: productForm.description || '',
+      specifications: productForm.specifications || '',
+      unit: mappedUnit,
+      price: parseFloat(productForm.price) || 0,
+      min_stock: parseInt(productForm.min_stock) || 10,
+      status: productForm.id ? undefined : 'active',
       images: processedImages,
       image: processedImages.length > 0 ? processedImages[0].url : null
     }
     
-    if (productForm.id) {
-      // 编辑模式
-      const index = products.value.findIndex(p => p.id === productForm.id)
-      if (index !== -1) {
-        products.value[index] = { 
-          ...productData, 
-          stock: products.value[index].stock, 
-          status: products.value[index].status 
-        }
+    console.log('🔄 商品数据准备发送:', productData)
+    
+    // 调用API
+    try {
+      if (productForm.id) {
+        // 编辑模式
+        console.log('🔄 更新商品:', productForm.id, productData)
+        await wmsAPI.updateProduct(productForm.id, productData)
+        ElMessage.success('商品更新成功')
+      } else {
+        // 新增模式
+        console.log('🔄 创建商品:', productData)
+        await wmsAPI.createProduct(productData)
+        ElMessage.success('商品创建成功')
       }
-          ElMessage.success('编辑成功（演示模式）')
-    } else {
-      // 添加模式
-      const newProduct = {
-        ...productData,
-        id: Date.now(),
-        stock: 0,
-        status: '正常',
-        barcode: Date.now().toString()
+      
+      dialogVisible.value = false
+      await loadProducts()
+      
+    } catch (error) {
+      console.error('❌ 保存商品失败:', error)
+      
+      // 🔧 改进错误处理：不重复显示错误信息，因为拦截器已经处理了
+      if (error.response?.status === 400) {
+        // 400错误的具体信息已经在拦截器中显示，这里只记录日志
+        console.log('📋 字段验证失败，请检查：')
+        console.log('- 分类ID:', productData.category_id)
+        console.log('- 品牌ID:', productData.brand_id)
+        console.log('- 供应商ID:', productData.supplier_id)
+        console.log('- 单位:', productData.unit)
+      } else {
+        // 其他错误显示通用消息
+        ElMessage.error('保存商品失败，请稍后重试')
       }
-      products.value.unshift(newProduct)
-      pagination.total = products.value.length
-          ElMessage.success('添加成功（演示模式）')
+    } finally {
+      saving.value = false
     }
     
-    dialogVisible.value = false
-    resetForm()
-      }
-    }
-  } finally {
+  } catch (error) {
+    console.error('❌ 表单验证失败:', error)
     saving.value = false
   }
 }
@@ -1107,6 +1215,7 @@ const resetForm = () => {
     name: '',
     category: '',
     brand: '',
+    supplier: '',
     unit: '',
     price: 0,
     min_stock: 10,
@@ -1268,6 +1377,8 @@ const handleCurrentChange = (page) => {
 
 onMounted(() => {
   loadProducts()
+  loadAvailableBrands()
+  loadAvailableSuppliers()
 })
 </script>
 

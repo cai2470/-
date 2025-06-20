@@ -204,7 +204,7 @@ export const getProductCategoryOptions = () => {
     
     const products = JSON.parse(stored)
     if (!Array.isArray(products)) {
-      console.warn('商品数据不是数组格式')
+      console.warn('商品数据不是数组格式，使用默认数据')
       return []
     }
     

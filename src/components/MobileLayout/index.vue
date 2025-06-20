@@ -27,7 +27,7 @@
       <div class="mobile-menu">
         <div class="menu-header">
           <div class="logo">
-            <img src="/logo.png" alt="小神龙仓库管理系统">
+            <div class="logo-icon">🐉</div>
             <span>小神龙WMS</span>
           </div>
         </div>
@@ -353,9 +353,10 @@ const handleLogout = async () => {
       align-items: center;
       color: white;
       
-      img {
-        height: 48px;
+      .logo-icon {
+        font-size: 48px;
         margin-bottom: 8px;
+        line-height: 1;
       }
       
       span {

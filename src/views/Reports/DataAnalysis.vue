@@ -42,9 +42,9 @@
         </el-form-item>
         <el-form-item label="分析维度">
           <el-radio-group v-model="filterForm.dimension" @change="handleFilterChange">
-            <el-radio label="all">全部</el-radio>
-            <el-radio label="warehouse">仓库</el-radio>
-            <el-radio label="category">分类</el-radio>
+                          <el-radio value="all">全部</el-radio>
+              <el-radio value="warehouse">仓库</el-radio>
+              <el-radio value="category">分类</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item>

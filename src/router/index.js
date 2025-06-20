@@ -13,6 +13,12 @@ const routes = [
     meta: { title: '登录', requireAuth: false }
   },
   {
+    path: '/simple-login',
+    name: 'SimpleLogin',
+    component: () => import('@/views/Login/simple.vue'),
+    meta: { title: '简化登录', requireAuth: false }
+  },
+  {
     path: '/',
     component: () => import('@/components/Layout/index.vue'),
     redirect: '/dashboard',

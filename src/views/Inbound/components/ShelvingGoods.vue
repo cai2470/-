@@ -480,6 +480,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getSupplierOptions, getWarehouseOptions } from '@/utils/filterOptions'
 import { getStorageData, setStorageData } from '@/utils/storage'
+import { wmsAPI } from '@/utils/api.js'
 
 const emit = defineEmits(['refresh'])
 
@@ -632,13 +633,30 @@ const loadBasicData = async () => {
 // 加载可用库区
 const loadAvailableZones = async () => {
   try {
-    console.log('=== 库区数据加载 ===')
+    console.log('🔄 正在从数据库加载库区数据...')
     
-    // 从localStorage加载用户创建的库区数据
-    const zonesData = JSON.parse(localStorage.getItem('wms_zones') || '[]')
-    const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+    // 🔧 修复：使用API加载库区和仓库数据
+    const [zonesResponse, warehousesResponse] = await Promise.all([
+      wmsAPI.getZones(),
+      wmsAPI.getWarehouses()
+    ])
     
-    console.log('库区数据统计:', { 
+    // 解析响应数据
+    let zonesData = []
+    if (zonesResponse && zonesResponse.results && Array.isArray(zonesResponse.results)) {
+      zonesData = zonesResponse.results
+    } else if (Array.isArray(zonesResponse)) {
+      zonesData = zonesResponse
+    }
+    
+    let warehousesData = []
+    if (warehousesResponse && warehousesResponse.results && Array.isArray(warehousesResponse.results)) {
+      warehousesData = warehousesResponse.results
+    } else if (Array.isArray(warehousesResponse)) {
+      warehousesData = warehousesResponse
+    }
+    
+    console.log('✅ 数据库数据统计:', { 
       zones: zonesData.length, 
       warehouses: warehousesData.length
     })
@@ -655,30 +673,56 @@ const loadAvailableZones = async () => {
           warehouse_id: zone.warehouse_id,
           warehouse_name: warehouse?.name || '未知仓库',
           description: zone.description || `${warehouse?.name || '未知仓库'}的${zone.name}`,
-          status: zone.status || 1
+          status: zone.status || 'active'
         }
         
-        console.log(`库区 ${zoneInfo.name}: 仓库ID=${zoneInfo.warehouse_id}, 仓库名=${zoneInfo.warehouse_name}`)
+        console.log(`📦 库区 ${zoneInfo.name}: 仓库ID=${zoneInfo.warehouse_id}, 仓库名=${zoneInfo.warehouse_name}`)
         return zoneInfo
       }).filter(zone => {
         // 只显示启用状态的库区
-        const isEnabled = zone.status === 1 || 
-                         zone.status === '启用' || 
-                         zone.status === 'active' ||
-                         zone.status === 'enabled'
+        const isEnabled = zone.status === 'active' || 
+                         zone.status === 'enabled' ||
+                         zone.status === 1 || 
+                         zone.status === '启用'
         
-        console.log(`库区 ${zone.name} 是否启用: ${isEnabled}`)
+        console.log(`✅ 库区 ${zone.name} 是否启用: ${isEnabled}`)
         return isEnabled
       })
       
-      console.log('最终可用库区列表:', availableZones.value)
+      console.log('✅ 最终可用库区列表:', availableZones.value.length, '个')
     } else {
-      console.log('没有找到库区数据，显示空列表')
+      console.log('⚠️ 没有找到库区数据，显示空列表')
       availableZones.value = []
     }
   } catch (error) {
-    console.error('加载库区数据失败:', error)
-    availableZones.value = []
+    console.error('❌ 加载库区数据失败:', error)
+    // 降级：如果API失败，尝试使用localStorage（向后兼容）
+    try {
+      const zonesData = JSON.parse(localStorage.getItem('wms_zones') || '[]')
+      const warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+      
+      if (zonesData.length > 0 && Array.isArray(warehousesData)) {
+        availableZones.value = zonesData.map(zone => {
+          const warehouse = warehousesData.find(w => w.id === zone.warehouse_id)
+          return {
+            id: zone.id,
+            name: zone.name,
+            code: zone.code,
+            warehouse_id: zone.warehouse_id,
+            warehouse_name: warehouse?.name || '未知仓库',
+            description: zone.description || `${warehouse?.name || '未知仓库'}的${zone.name}`,
+            status: zone.status || 'active'
+          }
+        }).filter(zone => zone.status === 'active' || zone.status === 1)
+        
+        console.log('📦 降级模式：使用localStorage数据，加载了', availableZones.value.length, '个库区')
+      } else {
+        availableZones.value = []
+      }
+    } catch (fallbackError) {
+      console.error('❌ 降级模式也失败:', fallbackError)
+      availableZones.value = []
+    }
   }
 }
 

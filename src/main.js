@@ -12,10 +12,16 @@ import './styles/index.scss'
 // 导入数据初始化工具
 import { initAllData, checkDataIntegrity } from './utils/initData'
 
-// 在开发环境加载API路径测试工具
-if (import.meta.env.DEV) {
-  import('./utils/apiPathTest.js')
-}
+// 导入localStorage诊断工具 - 修复导入错误
+import { diagnoseStorageIssues, monitorLocalStorage, cleanWMSLocalStorage, inspectLocalStorage } from './utils/cleanLocalStorage.js'
+
+// 导入登录修复工具
+import './utils/loginFix.js'
+
+// 导入CRUD测试工具
+import './utils/crudTest.js'
+
+// API路径测试工具已移除，功能已集成到主要代码中
 
 // 创建Vue应用实例
 const app = createApp(App)
@@ -46,6 +52,21 @@ async function initializeApp() {
   try {
     console.log('🚀 正在初始化小神龙仓库管理系统...')
     
+    // 开发环境下启动localStorage诊断和监控
+    if (import.meta.env.MODE === 'development') {
+      console.log('🔍 启动localStorage诊断...')
+      
+      // 执行诊断（但不启动监控，避免干扰登录）
+      const diagnosis = diagnoseStorageIssues()
+      
+      if (diagnosis.issues.length > 0) {
+        console.warn('⚠️ 检测到localStorage问题，建议运行: window.wmsDiagnostics.cleanWMSLocalStorage()')
+      }
+      
+      // 注意：localStorage监控已暂时禁用以避免登录问题
+      console.log('ℹ️ localStorage监控已禁用，可手动启动: window.wmsDiagnostics.monitorLocalStorage()')
+    }
+    
     // 检查数据完整性
     const hasValidData = checkDataIntegrity()
     
@@ -53,6 +74,18 @@ async function initializeApp() {
     if (!hasValidData || import.meta.env.MODE === 'development') {
       console.log('📋 初始化系统基础数据...')
       await initAllData()
+    }
+    
+    // 设置全局诊断工具（确保所有函数都可用）
+    window.wmsDiagnostics = {
+      diagnose: diagnoseStorageIssues,
+      monitor: monitorLocalStorage,
+      clean: cleanWMSLocalStorage,
+      inspect: inspectLocalStorage,
+      cleanWMSLocalStorage,
+      monitorLocalStorage,
+      diagnoseStorageIssues,
+      inspectLocalStorage
     }
     
     console.log('✅ 系统初始化完成')

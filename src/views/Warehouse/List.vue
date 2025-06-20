@@ -239,22 +239,28 @@ const warehouseTypeOptions = ref([])
 // 表单验证规则
 const rules = {
   code: [
-    { required: true, message: '请输入仓库编码', trigger: 'blur' }
+    { required: true, message: '请输入仓库编码', trigger: 'blur' },
+    { min: 2, max: 20, message: '仓库编码长度应在2-20个字符', trigger: 'blur' },
+    { pattern: /^[A-Z0-9_-]+$/, message: '仓库编码只能包含大写字母、数字、下划线和短横线', trigger: 'blur' }
   ],
   name: [
-    { required: true, message: '请输入仓库名称', trigger: 'blur' }
+    { required: true, message: '请输入仓库名称', trigger: 'blur' },
+    { min: 2, max: 50, message: '仓库名称长度应在2-50个字符', trigger: 'blur' }
   ],
   type: [
     { required: true, message: '请选择仓库类型', trigger: 'change' }
   ],
   manager: [
-    { required: true, message: '请输入负责人', trigger: 'blur' }
+    { required: true, message: '请输入负责人', trigger: 'blur' },
+    { min: 2, max: 20, message: '负责人姓名长度应在2-20个字符', trigger: 'blur' }
   ],
   phone: [
-    { required: true, message: '请输入联系电话', trigger: 'blur' }
+    { required: true, message: '请输入联系电话', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$|^(\d{3,4}-)?\d{7,8}$/, message: '请输入有效的手机号码或固定电话', trigger: 'blur' }
   ],
   address: [
-    { required: true, message: '请输入仓库地址', trigger: 'blur' }
+    { required: true, message: '请输入仓库地址', trigger: 'blur' },
+    { min: 5, max: 100, message: '仓库地址长度应在5-100个字符', trigger: 'blur' }
   ]
 }
 
@@ -323,14 +329,16 @@ const loadWarehouses = async () => {
       data = response.warehouses
     }
     
-    // 确保数据格式正确
+    // 确保数据格式正确，处理后端字段映射
     warehouses.value = data.map(warehouse => ({
       id: warehouse.id,
       code: warehouse.code || '',
       name: warehouse.name || '',
       type: warehouse.type || '',
-      manager: warehouse.manager || '',
-      phone: warehouse.phone || '',
+      // 处理字段映射：后端用 contact_person，前端用 manager
+      manager: warehouse.contact_person || warehouse.manager || '',
+      // 处理字段映射：后端用 contact_phone，前端用 phone  
+      phone: warehouse.contact_phone || warehouse.phone || '',
       address: warehouse.address || '',
       area: warehouse.area || 0,
       zone_count: warehouse.zone_count || 0,
@@ -534,6 +542,27 @@ const saveWarehouse = async () => {
     } catch (apiError) {
       console.error('API保存失败，使用本地保存:', apiError)
       
+      // 显示详细的API错误信息
+      let errorMessage = 'API保存失败'
+      if (apiError.response?.status === 400) {
+        const errorData = apiError.response?.data
+        if (errorData && typeof errorData === 'object') {
+          // 提取具体的字段错误
+          const fieldErrors = []
+          for (const [field, errors] of Object.entries(errorData)) {
+            if (Array.isArray(errors)) {
+              fieldErrors.push(`${field}: ${errors.join(', ')}`)
+            }
+          }
+          if (fieldErrors.length > 0) {
+            errorMessage = `数据验证失败：${fieldErrors.join('; ')}`
+          }
+        }
+        ElMessage.error(errorMessage)
+      } else {
+        ElMessage.warning('API连接失败，已保存到本地')
+      }
+      
       // API失败时的本地保存
       if (warehouseForm.id) {
         // 编辑模式
@@ -545,7 +574,9 @@ const saveWarehouse = async () => {
             status: warehouses.value[index].status 
           }
         }
-        ElMessage.success('编辑成功（本地模式）')
+        if (apiError.response?.status !== 400) {
+          ElMessage.success('编辑成功（本地模式）')
+        }
       } else {
         // 添加模式
         const newWarehouse = {
@@ -556,10 +587,15 @@ const saveWarehouse = async () => {
         }
         warehouses.value.unshift(newWarehouse)
         pagination.total = warehouses.value.length
-        ElMessage.success('添加成功（本地模式）')
+        if (apiError.response?.status !== 400) {
+          ElMessage.success('添加成功（本地模式）')
+        }
       }
       
-      saveToStorage(warehouses.value)
+      // 只有在非400错误时才保存到本地存储
+      if (apiError.response?.status !== 400) {
+        saveToStorage(warehouses.value)
+      }
     }
     
     dialogVisible.value = false

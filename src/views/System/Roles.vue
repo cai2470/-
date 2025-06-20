@@ -292,7 +292,7 @@ const getRoleList = async () => {
       }
     })
     
-    const response = await roleApi.list(params)
+    const response = await roleApi.default.list(params)
     roleList.value = response.results
     pagination.total = response.count
   } catch (error) {
@@ -305,7 +305,7 @@ const getRoleList = async () => {
 
 const getPermissionList = async () => {
   try {
-    const response = await permissionApi.list({ page_size: 1000 })
+    const response = await permissionApi.default.list({ page_size: 1000 })
     permissionList.value = response.results
     buildPermissionTree()
   } catch (error) {
@@ -434,10 +434,10 @@ const handleSubmit = async () => {
     delete data.id
     
     if (roleForm.id) {
-      await roleApi.update(roleForm.id, data)
+      await roleApi.default.update(roleForm.id, data)
       ElMessage.success('角色更新成功')
     } else {
-      await roleApi.create(data)
+      await roleApi.default.create(data)
       ElMessage.success('角色创建成功')
     }
     
@@ -470,7 +470,7 @@ const handleDelete = async (row) => {
       }
     )
     
-    await roleApi.delete(row.id)
+    await roleApi.default.delete(row.id)
     ElMessage.success('角色删除成功')
     getRoleList()
   } catch (error) {
@@ -524,7 +524,7 @@ const handlePermissionSubmit = async () => {
     permissionSubmitting.value = true
     const checkedKeys = permissionTreeRef.value?.getCheckedKeys() || []
     
-    await roleApi.updatePermissions(currentRole.value.id, {
+    await roleApi.default.updatePermissions(currentRole.value.id, {
       permission_ids: checkedKeys
     })
     

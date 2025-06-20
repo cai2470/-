@@ -420,7 +420,7 @@ const loadTableData = async () => {
   loading.value = true
   try {
     const params = {
-      status: 'pre_delivery',
+      status: 'shipped',
       page: pagination.page,
       page_size: pagination.size,
       ...filterForm
@@ -464,7 +464,7 @@ const loadTableDataFromLocalStorage = () => {
     console.log('PreDelivery - 从localStorage获取出库单数据:', orders)
     
     // 筛选预发货状态的订单
-    let preDeliveryOrders = orders.filter(order => order.status === 'pre_delivery')
+    let preDeliveryOrders = orders.filter(order => order.status === 'shipped')
     console.log('PreDelivery - 筛选出的预发货订单:', preDeliveryOrders)
     
     // 补充仓库名称

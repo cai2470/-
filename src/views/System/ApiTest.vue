@@ -1,814 +1,355 @@
 <template>
-  <div class="api-test-page">
-    <div class="page-header">
-      <h1>API接口测试</h1>
-      <div class="header-actions">
-        <el-button type="success" @click="testAllAPIs">
-          <el-icon><Promotion /></el-icon>
-          测试所有接口
-        </el-button>
-        <el-button type="info" @click="clearResults">
-          <el-icon><Refresh /></el-icon>
-          清空结果
-        </el-button>
-      </div>
-    </div>
-
-    <!-- API连接状态 -->
-    <el-card class="status-card">
-      <div class="status-header">
-        <h3>API连接状态</h3>
-        <el-tag :type="apiStatus.type" size="large">
-          {{ apiStatus.text }}
-        </el-tag>
-      </div>
-      <div class="status-info">
-        <p><strong>基础URL：</strong>{{ baseURL }}</p>
-        <p><strong>认证状态：</strong>{{ authStatus }}</p>
-        <p><strong>最后测试：</strong>{{ lastTestTime || '未测试' }}</p>
-      </div>
-    </el-card>
-
-    <!-- 接口测试列表 -->
-    <div class="test-sections">
-      <!-- 系统接口 -->
-      <el-card class="test-section">
-        <template #header>
-          <div class="section-header">
-            <h3>🏠 系统接口</h3>
-            <el-button size="small" @click="testSystemAPIs">测试本组</el-button>
-          </div>
-        </template>
-        
-        <div class="api-list">
-          <div class="api-item" v-for="api in systemAPIs" :key="api.name">
-            <div class="api-info">
-              <span class="api-method" :class="api.method.toLowerCase()">{{ api.method }}</span>
-              <span class="api-path">{{ api.path }}</span>
-              <span class="api-desc">{{ api.description }}</span>
-            </div>
-            <div class="api-actions">
-              <el-button size="small" @click="testSingleAPI(api)" :loading="api.testing">
-                测试
-              </el-button>
-            </div>
-            <div class="api-result" v-if="api.result">
-              <el-tag :type="api.result.success ? 'success' : 'danger'" size="small">
-                {{ api.result.success ? '成功' : '失败' }}
-              </el-tag>
-              <span class="result-message">{{ api.result.message }}</span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 认证接口 -->
-      <el-card class="test-section">
-        <template #header>
-          <div class="section-header">
-            <h3>🔐 认证接口</h3>
-            <el-button size="small" @click="testAuthAPIs">测试本组</el-button>
-          </div>
-        </template>
-        
-        <div class="api-list">
-          <div class="api-item" v-for="api in authAPIs" :key="api.name">
-            <div class="api-info">
-              <span class="api-method" :class="api.method.toLowerCase()">{{ api.method }}</span>
-              <span class="api-path">{{ api.path }}</span>
-              <span class="api-desc">{{ api.description }}</span>
-            </div>
-            <div class="api-actions">
-              <el-button size="small" @click="testSingleAPI(api)" :loading="api.testing">
-                测试
-              </el-button>
-            </div>
-            <div class="api-result" v-if="api.result">
-              <el-tag :type="api.result.success ? 'success' : 'danger'" size="small">
-                {{ api.result.success ? '成功' : '失败' }}
-              </el-tag>
-              <span class="result-message">{{ api.result.message }}</span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 业务接口 -->
-      <el-card class="test-section">
-        <template #header>
-          <div class="section-header">
-            <h3>📦 业务接口</h3>
-            <el-button size="small" @click="testBusinessAPIs">测试本组</el-button>
-          </div>
-        </template>
-        
-        <div class="api-list">
-          <div class="api-item" v-for="api in businessAPIs" :key="api.name">
-            <div class="api-info">
-              <span class="api-method" :class="api.method.toLowerCase()">{{ api.method }}</span>
-              <span class="api-path">{{ api.path }}</span>
-              <span class="api-desc">{{ api.description }}</span>
-            </div>
-            <div class="api-actions">
-              <el-button size="small" @click="testSingleAPI(api)" :loading="api.testing">
-                测试
-              </el-button>
-            </div>
-            <div class="api-result" v-if="api.result">
-              <el-tag :type="api.result.success ? 'success' : 'danger'" size="small">
-                {{ api.result.success ? '成功' : '失败' }}
-              </el-tag>
-              <span class="result-message">{{ api.result.message }}</span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- 测试接口 -->
-      <el-card class="test-section">
-        <template #header>
-          <div class="section-header">
-            <h3>🧪 测试接口</h3>
-            <el-button size="small" @click="testTestAPIs">测试本组</el-button>
-          </div>
-        </template>
-        
-        <div class="api-list">
-          <div class="api-item" v-for="api in testAPIs" :key="api.name">
-            <div class="api-info">
-              <span class="api-method" :class="api.method.toLowerCase()">{{ api.method }}</span>
-              <span class="api-path">{{ api.path }}</span>
-              <span class="api-desc">{{ api.description }}</span>
-            </div>
-            <div class="api-actions">
-              <el-button size="small" @click="testSingleAPI(api)" :loading="api.testing">
-                测试
-              </el-button>
-            </div>
-            <div class="api-result" v-if="api.result">
-              <el-tag :type="api.result.success ? 'success' : 'danger'" size="small">
-                {{ api.result.success ? '成功' : '失败' }}
-              </el-tag>
-              <span class="result-message">{{ api.result.message }}</span>
-            </div>
-          </div>
-        </div>
-      </el-card>
-    </div>
-
-    <!-- 测试结果汇总 -->
-    <el-card class="summary-card" v-if="testResults.length > 0">
+  <div class="api-test-container">
+    <el-card class="page-card">
       <template #header>
-        <h3>📊 测试结果汇总</h3>
+        <div class="card-header">
+          <h2>🔧 系统诊断与API测试</h2>
+          <p>诊断localStorage问题并测试API接口连通性</p>
+        </div>
       </template>
-      
-      <div class="summary-stats">
-        <div class="stat-item">
-          <span class="stat-label">总测试数</span>
-          <span class="stat-value">{{ testResults.length }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">成功数</span>
-          <span class="stat-value success">{{ successCount }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">失败数</span>
-          <span class="stat-value error">{{ failCount }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">成功率</span>
-          <span class="stat-value">{{ successRate }}%</span>
-        </div>
-      </div>
 
-      <el-table :data="testResults" stripe size="small" max-height="300">
-        <el-table-column prop="name" label="接口" width="200" />
-        <el-table-column prop="method" label="方法" width="80" />
-        <el-table-column prop="path" label="路径" min-width="200" />
-        <el-table-column prop="status" label="状态" width="80">
-          <template #default="scope">
-            <el-tag :type="scope.row.success ? 'success' : 'danger'" size="small">
-              {{ scope.row.success ? '成功' : '失败' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="message" label="结果" min-width="200" />
-        <el-table-column prop="timestamp" label="测试时间" width="160" />
-      </el-table>
+      <!-- localStorage诊断区域 -->
+      <el-card class="diagnosis-section" shadow="never">
+        <template #header>
+          <div class="section-header">
+            <h3>📊 localStorage诊断</h3>
+            <div class="button-group">
+              <el-button 
+                type="primary" 
+                :icon="monitoring ? 'VideoPause' : 'VideoPlay'"
+                @click="toggleStorageMonitoring"
+              >
+                {{ monitoring ? '停止监控' : '开始监控' }}
+              </el-button>
+              <el-button type="info" @click="runStorageDiagnosis">
+                重新诊断
+              </el-button>
+              <el-button type="danger" @click="cleanAllLocalStorage">
+                清理localStorage
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="storageInfo" class="diagnosis-info">
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <el-statistic 
+                title="API可用性" 
+                :value="storageInfo.apiAvailable ? '✅ 可用' : '❌ 不可用'"
+                value-style="color: #409eff"
+              />
+            </el-col>
+            <el-col :span="8">
+              <el-statistic 
+                title="localStorage项目数" 
+                :value="storageInfo.inspection.total"
+                suffix="个"
+              />
+            </el-col>
+            <el-col :span="8">
+              <el-statistic 
+                title="发现问题" 
+                :value="storageInfo.issues.length"
+                suffix="个"
+                :value-style="{ color: storageInfo.issues.length > 0 ? '#f56c6c' : '#67c23a' }"
+              />
+            </el-col>
+          </el-row>
+
+          <el-divider content-position="left">检测到的问题</el-divider>
+          
+          <div v-if="storageInfo.issues.length > 0">
+            <el-alert
+              v-for="(issue, index) in storageInfo.issues"
+              :key="index"
+              :title="`问题 ${index + 1}`"
+              :description="issue"
+              type="warning"
+              :closable="false"
+              class="issue-alert"
+            />
+          </div>
+          <div v-else>
+            <el-alert
+              title="✅ 没有发现localStorage相关问题"
+              type="success"
+              :closable="false"
+            />
+          </div>
+
+          <el-divider content-position="left">localStorage详情</el-divider>
+          
+          <el-descriptions :column="2" border>
+            <el-descriptions-item 
+              v-for="(data, key) in storageInfo.inspection.businessData"
+              :key="key"
+              :label="key"
+            >
+              <el-tag :type="data.itemCount === 'invalid' ? 'danger' : 'info'">
+                {{ data.preview }}
+              </el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+      </el-card>
+
+      <!-- API测试区域 -->
+      <el-card class="test-section" shadow="never">
+        <template #header>
+          <div class="section-header">
+            <h3>🚀 API连通性测试</h3>
+            <el-button 
+              type="primary" 
+              :loading="loading"
+              @click="testAllAPIs"
+            >
+              {{ loading ? '测试中...' : '开始测试' }}
+            </el-button>
+          </div>
+        </template>
+
+        <div v-if="testResults.length > 0" class="test-results">
+          <el-table :data="testResults" style="width: 100%" max-height="400">
+            <el-table-column prop="name" label="API接口" width="200" />
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'success' ? 'success' : 'danger'">
+                  {{ row.status === 'success' ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="message" label="结果信息" />
+            <el-table-column label="响应时间" width="100">
+              <template #default="{ row }">
+                {{ row.responseTime }}ms
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-card>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Promotion, Refresh } from '@element-plus/icons-vue'
-import api from '@/utils/api'
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { wmsAPI } from '@/utils/api.js'
+import { 
+  cleanWMSLocalStorage, 
+  inspectLocalStorage, 
+  diagnoseStorageIssues,
+  monitorLocalStorage 
+} from '@/utils/cleanLocalStorage.js'
 
-// 响应式数据
-const baseURL = ref('')
-const authStatus = ref('未登录')
-const lastTestTime = ref('')
+const loading = ref(false)
 const testResults = ref([])
+const storageInfo = ref(null)
+const monitoring = ref(false)
+let monitorInstance = null
 
-// API状态
-const apiStatus = reactive({
-  type: 'info',
-  text: '未测试'
-})
-
-// 系统接口列表
-const systemAPIs = ref([
-  {
-    name: 'healthCheck',
-    method: 'GET',
-    path: '/',
-    description: '健康检查',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'getApiInfo',
-    method: 'GET',
-    path: '/api/',
-    description: '获取API信息',
-    testing: false,
-    result: null
-  }
-])
-
-// 认证接口列表
-const authAPIs = ref([
-  {
-    name: 'register',
-    method: 'POST',
-    path: '/api/auth/register/',
-    description: '用户注册',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'login',
-    method: 'POST',
-    path: '/api/auth/login/',
-    description: '用户登录',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'getCurrentUser',
-    method: 'GET',
-    path: '/api/auth/user/',
-    description: '获取用户信息',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'logout',
-    method: 'POST',
-    path: '/api/auth/logout/',
-    description: '用户登出',
-    testing: false,
-    result: null
-  }
-])
-
-// 业务接口列表
-const businessAPIs = ref([
-  {
-    name: 'getProducts',
-    method: 'GET',
-    path: '/api/products/',
-    description: '获取商品列表',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'getInventory',
-    method: 'GET',
-    path: '/api/inventory/',
-    description: '获取库存信息',
-    testing: false,
-    result: null
-  }
-])
-
-// 测试接口列表
-const testAPIs = ref([
-  {
-    name: 'testProtected',
-    method: 'GET',
-    path: '/api/test/protected/',
-    description: '受保护接口测试',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'testGet',
-    method: 'GET',
-    path: '/api/test/get/',
-    description: 'GET请求测试',
-    testing: false,
-    result: null
-  },
-  {
-    name: 'testPost',
-    method: 'POST',
-    path: '/api/test/post/',
-    description: 'POST请求测试',
-    testing: false,
-    result: null
-  }
-])
-
-// 计算属性
-const successCount = computed(() => {
-  return testResults.value.filter(r => r.success).length
-})
-
-const failCount = computed(() => {
-  return testResults.value.filter(r => !r.success).length
-})
-
-const successRate = computed(() => {
-  if (testResults.value.length === 0) return 0
-  return Math.round((successCount.value / testResults.value.length) * 100)
-})
-
-// 测试单个API
-const testSingleAPI = async (apiItem) => {
-  apiItem.testing = true
-  const startTime = Date.now()
+// localStorage诊断和清理
+const runStorageDiagnosis = async () => {
+  console.log('🏥 开始localStorage全面诊断...')
   
   try {
-    let result = null
-    let success = false
-    let message = ''
+    const diagnosis = diagnoseStorageIssues()
+    storageInfo.value = diagnosis
     
-    console.log(`🔄 测试接口: ${apiItem.method} ${apiItem.path}`)
+    ElMessage({
+      type: diagnosis.issues.length > 0 ? 'warning' : 'success',
+      message: diagnosis.issues.length > 0 
+        ? `发现 ${diagnosis.issues.length} 个存储问题` 
+        : 'localStorage状态正常',
+      duration: 3000
+    })
     
-    switch (apiItem.name) {
-      case 'healthCheck':
-        result = await api.healthCheck()
-        success = !!result.status
-        message = result.message || '服务正常'
-        break
-        
-      case 'getApiInfo':
-        result = await api.getApiInfo()
-        success = !!result.name
-        message = `API: ${result.name} v${result.version}`
-        break
-        
-      case 'register':
-        try {
-          result = await api.register({
-            username: 'test_' + Date.now(),
-            email: `test${Date.now()}@example.com`,
-            password: '123456'
-          })
-          success = result.success !== false
-          message = result.message || '注册成功'
-        } catch (error) {
-          success = false
-          message = error.response?.data?.error || error.message
-        }
-        break
-        
-      case 'login':
-        try {
-          result = await api.login({
-            username: 'admin',
-            password: '123456'
-          })
-          success = result.success !== false && !!result.tokens
-          message = success ? '登录成功' : '登录失败'
-        } catch (error) {
-          success = false
-          message = error.response?.data?.error || error.message
-        }
-        break
-        
-      case 'getCurrentUser':
-        try {
-          result = await api.getCurrentUser()
-          success = !!result.user
-          message = result.user ? `用户: ${result.user.username}` : '获取用户信息失败'
-        } catch (error) {
-          success = false
-          message = error.response?.data?.error || error.message
-        }
-        break
-        
-      case 'logout':
-        try {
-          await api.logout()
-          success = true
-          message = '登出成功'
-        } catch (error) {
-          success = false
-          message = error.response?.data?.error || error.message
-        }
-        break
-        
-      case 'getProducts':
-        result = await api.getProducts({ page: 1, pageSize: 10 })
-        success = !!result.products
-        message = result.products ? `加载${result.products.length}个商品` : '获取商品失败'
-        break
-        
-      case 'getInventory':
-        result = await api.getInventory()
-        success = !!result.inventory
-        message = result.inventory ? `加载${result.inventory.length}条库存` : '获取库存失败'
-        break
-        
-      case 'testProtected':
-        try {
-          result = await api.testProtected()
-          success = result.protected === true
-          message = result.message || '受保护接口测试成功'
-        } catch (error) {
-          success = false
-          message = error.response?.data?.error || error.message
-        }
-        break
-        
-      case 'testGet':
-        result = await api.testGet({ test: 'value', frontend: true })
-        success = result.method === 'GET'
-        message = 'GET请求测试成功'
-        break
-        
-      case 'testPost':
-        result = await api.testPost({ test: 'data' })
-        success = result.method === 'POST'
-        message = 'POST请求测试成功'
-        break
-        
-      default:
-        throw new Error('未知的测试接口')
+    console.log('诊断结果:', diagnosis)
+    
+  } catch (error) {
+    console.error('诊断失败:', error)
+    ElMessage.error('诊断过程中发生错误')
+  }
+}
+
+const cleanAllLocalStorage = async () => {
+  try {
+    const result = await ElMessageBox.confirm(
+      '确定要清理所有业务相关的localStorage数据吗？\n这将删除所有本地存储的供应商、产品、仓库等数据，系统将完全依赖数据库。',
+      '清理确认',
+      {
+        confirmButtonText: '确定清理',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    if (result === 'confirm') {
+      const cleanResult = cleanWMSLocalStorage()
+      
+      ElMessage.success(`清理完成！删除了 ${cleanResult.removed} 个数据项`)
+      
+      // 重新诊断
+      setTimeout(() => {
+        runStorageDiagnosis()
+      }, 500)
     }
-    
-    // 更新结果
-    apiItem.result = { success, message }
-    
-    // 添加到测试结果
-    testResults.value.push({
-      name: apiItem.description,
-      method: apiItem.method,
-      path: apiItem.path,
-      success,
-      message,
-      timestamp: new Date().toLocaleString(),
-      duration: Date.now() - startTime
-    })
-    
-    console.log(`${success ? '✅' : '❌'} ${apiItem.path}: ${message}`)
-    
   } catch (error) {
-    console.error(`❌ ${apiItem.path} 测试失败:`, error)
-    
-    const message = error.response?.data?.error || error.message || '请求失败'
-    apiItem.result = { success: false, message }
-    
-    testResults.value.push({
-      name: apiItem.description,
-      method: apiItem.method,
-      path: apiItem.path,
-      success: false,
-      message,
-      timestamp: new Date().toLocaleString(),
-      duration: Date.now() - startTime
-    })
-  } finally {
-    apiItem.testing = false
+    console.log('用户取消清理操作')
   }
 }
 
-// 测试所有系统接口
-const testSystemAPIs = async () => {
-  for (const apiItem of systemAPIs.value) {
-    await testSingleAPI(apiItem)
-  }
-}
-
-// 测试所有认证接口
-const testAuthAPIs = async () => {
-  for (const apiItem of authAPIs.value) {
-    await testSingleAPI(apiItem)
-  }
-}
-
-// 测试所有业务接口
-const testBusinessAPIs = async () => {
-  for (const apiItem of businessAPIs.value) {
-    await testSingleAPI(apiItem)
-  }
-}
-
-// 测试所有测试接口
-const testTestAPIs = async () => {
-  for (const apiItem of testAPIs.value) {
-    await testSingleAPI(apiItem)
-  }
-}
-
-// 测试所有接口
-const testAllAPIs = async () => {
-  ElMessage.info('开始测试所有API接口...')
-  clearResults()
-  
-  try {
-    // 先测试基础连接
-    await testSystemAPIs()
-    
-    // 测试认证
-    await testAuthAPIs()
-    
-    // 测试业务接口
-    await testBusinessAPIs()
-    
-    // 测试专用测试接口
-    await testTestAPIs()
-    
-    // 更新状态
-    updateAPIStatus()
-    lastTestTime.value = new Date().toLocaleString()
-    
-    ElMessage.success('所有API测试完成')
-  } catch (error) {
-    ElMessage.error('API测试过程中出现错误')
-  }
-}
-
-// 更新API状态
-const updateAPIStatus = () => {
-  const allAPIs = [...systemAPIs.value, ...authAPIs.value, ...businessAPIs.value, ...testAPIs.value]
-  const testedAPIs = allAPIs.filter(api => api.result)
-  const successfulAPIs = testedAPIs.filter(api => api.result.success)
-  
-  if (testedAPIs.length === 0) {
-    apiStatus.type = 'info'
-    apiStatus.text = '未测试'
-  } else if (successfulAPIs.length === testedAPIs.length) {
-    apiStatus.type = 'success'
-    apiStatus.text = '全部正常'
-  } else if (successfulAPIs.length > 0) {
-    apiStatus.type = 'warning'
-    apiStatus.text = '部分正常'
+const toggleStorageMonitoring = () => {
+  if (monitoring.value) {
+    // 停止监控
+    if (monitorInstance) {
+      monitorInstance.stop()
+      monitorInstance = null
+    }
+    monitoring.value = false
+    ElMessage.info('已停止localStorage监控')
   } else {
-    apiStatus.type = 'danger'
-    apiStatus.text = '连接失败'
+    // 开始监控
+    monitorInstance = monitorLocalStorage()
+    monitoring.value = true
+    ElMessage.success('已开始localStorage监控，请查看控制台输出')
   }
 }
 
-// 清空测试结果
-const clearResults = () => {
+// API测试功能（保留原有功能）
+const testAllAPIs = async () => {
+  loading.value = true
   testResults.value = []
   
-  // 清空所有API的结果
-  const allAPIs = [...systemAPIs.value, ...authAPIs.value, ...businessAPIs.value, ...testAPIs.value]
-  allAPIs.forEach(api => {
-    api.result = null
-    api.testing = false
-  })
+  const apiTests = [
+    // 基础数据API测试
+    { name: '获取仓库列表', test: () => wmsAPI.getWarehouses() },
+    { name: '获取供应商列表', test: () => wmsAPI.getSuppliers() },
+    { name: '获取商品列表', test: () => wmsAPI.getProducts() },
+    { name: '获取商品分类', test: () => wmsAPI.getCategories() },
+    { name: '获取品牌列表', test: () => wmsAPI.getBrands() },
+    { name: '获取客户列表', test: () => wmsAPI.getCustomers() },
+    { name: '获取库区列表', test: () => wmsAPI.getZones() },
+    { name: '获取库位列表', test: () => wmsAPI.getLocations() },
+    
+    // 业务流程API测试
+    { name: '获取入库订单', test: () => wmsAPI.getInboundOrders() },
+    { name: '获取出库订单', test: () => wmsAPI.getOutboundOrders() },
+    { name: '获取库存记录', test: () => wmsAPI.getInventory() },
+    { name: '获取库存变动', test: () => wmsAPI.getStockMovements() },
+    
+    // 系统管理API测试
+    { name: '获取用户列表', test: () => wmsAPI.getUsers() },
+    { name: '获取角色列表', test: () => wmsAPI.getRoles() },
+    { name: '获取权限列表', test: () => wmsAPI.getPermissions() },
+    
+    // 删除功能测试（新增）
+    { name: '删除API检查-商品分类', test: () => typeof wmsAPI.deleteCategory === 'function' ? Promise.resolve('函数存在') : Promise.reject('函数不存在') },
+    { name: '删除API检查-品牌', test: () => typeof wmsAPI.deleteBrand === 'function' ? Promise.resolve('函数存在') : Promise.reject('函数不存在') },
+    { name: '删除API检查-供应商', test: () => typeof wmsAPI.deleteSupplier === 'function' ? Promise.resolve('函数存在') : Promise.reject('函数不存在') },
+    { name: '删除API检查-仓库', test: () => typeof wmsAPI.deleteWarehouse === 'function' ? Promise.resolve('函数存在') : Promise.reject('函数不存在') }
+  ]
   
-  apiStatus.type = 'info'
-  apiStatus.text = '未测试'
-}
-
-// 检查认证状态
-const checkAuthStatus = () => {
-  if (api.isAuthenticated()) {
-    const user = api.getCurrentUserLocal()
-    authStatus.value = user ? `已登录: ${user.username}` : '已登录'
-  } else {
-    authStatus.value = '未登录'
+  for (const apiTest of apiTests) {
+    const startTime = Date.now()
+    try {
+      const result = await apiTest.test()
+      const endTime = Date.now()
+      
+      testResults.value.push({
+        name: apiTest.name,
+        status: 'success',
+        message: '测试通过',
+        data: result,
+        responseTime: endTime - startTime
+      })
+      
+      console.log(`✅ ${apiTest.name} - 成功`)
+      
+    } catch (error) {
+      const endTime = Date.now()
+      
+      testResults.value.push({
+        name: apiTest.name,
+        status: 'error',
+        message: error.message || '测试失败',
+        error: error,
+        responseTime: endTime - startTime
+      })
+      
+      console.error(`❌ ${apiTest.name} - 失败:`, error)
+    }
   }
+  
+  loading.value = false
+  
+  const successCount = testResults.value.filter(r => r.status === 'success').length
+  const totalCount = testResults.value.length
+  
+  ElMessage({
+    type: successCount === totalCount ? 'success' : 'warning',
+    message: `API测试完成：${successCount}/${totalCount} 个通过`
+  })
 }
 
 onMounted(() => {
-  baseURL.value = import.meta.env.VITE_API_BASE_URL || 'https://jdegylyrnsyf.sealoshzh.site'
-  checkAuthStatus()
+  // 页面加载时自动运行诊断
+  runStorageDiagnosis()
 })
 </script>
 
-<style lang="scss" scoped>
-.api-test-page {
+<style scoped>
+.api-test-container {
   padding: 20px;
 }
 
-.page-header {
+.page-card {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.card-header h2 {
+  margin: 0 0 8px 0;
+  color: #303133;
+}
+
+.card-header p {
+  margin: 0;
+  color: #909399;
+  font-size: 14px;
+}
+
+.diagnosis-section,
+.test-section {
+  margin-bottom: 20px;
+}
+
+.section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  
-  h1 {
-    margin: 0;
-    color: #303133;
-    font-size: 24px;
-    font-weight: 600;
-  }
-  
-  .header-actions {
-    display: flex;
-    gap: 10px;
-  }
 }
 
-.status-card {
-  margin-bottom: 20px;
-  
-  .status-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    
-    h3 {
-      margin: 0;
-      color: #303133;
-    }
-  }
-  
-  .status-info {
-    p {
-      margin: 5px 0;
-      color: #606266;
-      font-size: 14px;
-    }
-  }
+.section-header h3 {
+  margin: 0;
+  color: #409eff;
 }
 
-.test-sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-  gap: 20px;
-  margin-bottom: 20px;
+.button-group {
+  display: flex;
+  gap: 10px;
 }
 
-.test-section {
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    
-    h3 {
-      margin: 0;
-      color: #303133;
-    }
-  }
-  
-  .api-list {
-    .api-item {
-      padding: 15px 0;
-      border-bottom: 1px solid #ebeef5;
-      
-      &:last-child {
-        border-bottom: none;
-      }
-      
-      .api-info {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 8px;
-        
-        .api-method {
-          padding: 2px 8px;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: 600;
-          text-transform: uppercase;
-          
-          &.get {
-            background: #e7f4ff;
-            color: #409eff;
-          }
-          
-          &.post {
-            background: #f0f9ff;
-            color: #67c23a;
-          }
-          
-          &.put {
-            background: #fdf6ec;
-            color: #e6a23c;
-          }
-          
-          &.delete {
-            background: #fef0f0;
-            color: #f56c6c;
-          }
-        }
-        
-        .api-path {
-          font-family: monospace;
-          color: #606266;
-          font-size: 13px;
-        }
-        
-        .api-desc {
-          color: #909399;
-          font-size: 13px;
-        }
-      }
-      
-      .api-actions {
-        margin-bottom: 8px;
-      }
-      
-      .api-result {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        
-        .result-message {
-          font-size: 12px;
-          color: #606266;
-        }
-      }
-    }
-  }
+.diagnosis-info {
+  margin-top: 20px;
 }
 
-.summary-card {
-  .summary-stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
-    margin-bottom: 20px;
-    
-    .stat-item {
-      text-align: center;
-      padding: 15px;
-      background: #f5f7fa;
-      border-radius: 8px;
-      
-      .stat-label {
-        display: block;
-        font-size: 14px;
-        color: #909399;
-        margin-bottom: 5px;
-      }
-      
-      .stat-value {
-        display: block;
-        font-size: 24px;
-        font-weight: 600;
-        color: #303133;
-        
-        &.success {
-          color: #67c23a;
-        }
-        
-        &.error {
-          color: #f56c6c;
-        }
-      }
-    }
-  }
+.issue-alert {
+  margin-bottom: 10px;
 }
 
-// 响应式设计
-@media (max-width: 768px) {
-  .api-test-page {
-    padding: 10px;
-  }
-  
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-    
-    h1 {
-      font-size: 20px;
-    }
-    
-    .header-actions {
-      width: 100%;
-      justify-content: center;
-    }
-  }
-  
-  .test-sections {
-    grid-template-columns: 1fr;
-  }
-  
-  .summary-stats {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 10px !important;
-    
-    .stat-item {
-      padding: 10px !important;
-      
-      .stat-value {
-        font-size: 20px !important;
-      }
-    }
-  }
+.test-results {
+  margin-top: 20px;
 }
 </style> 

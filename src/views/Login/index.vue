@@ -103,13 +103,58 @@
               </el-button>
               <el-button 
                 size="small" 
-                @click="checkAPIHealth"
+                @click="checkDataSource"
                 type="warning"
                 plain
                 :loading="checkingAPI"
               >
-                🔧 API检查
+                🎯 数据源检查
               </el-button>
+              <el-button 
+                size="small" 
+                @click="cleanLocalData"
+                type="danger"
+                plain
+                :loading="cleaning"
+              >
+                🧹 清理本地数据
+              </el-button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 数据源检查 -->
+        <div class="data-source-section">
+          <h3 style="margin-bottom: 15px; color: #409EFF;">🔍 数据库连接状态检查</h3>
+          <el-button 
+            type="info" 
+            @click="checkDatabaseConnection" 
+            :loading="checking"
+            size="small"
+            style="margin-bottom: 10px; width: 100%;"
+          >
+            {{ checking ? '检查中...' : '全面检查数据库连接' }}
+          </el-button>
+          
+          <!-- 检查结果显示 -->
+          <div v-if="checkResults.length > 0" class="check-results">
+            <div v-for="(result, index) in checkResults" :key="index" class="check-item">
+              <el-tag 
+                :type="result.status === 'success' ? 'success' : 'danger'"
+                size="small"
+                style="margin-right: 8px;"
+              >
+                {{ result.status === 'success' ? '✅' : '❌' }}
+              </el-tag>
+              <span class="check-name">{{ result.name }}</span>
+              <span class="check-detail">{{ result.detail }}</span>
+            </div>
+            
+            <div class="check-summary" style="margin-top: 15px; padding: 10px; background: #f5f7fa; border-radius: 4px;">
+              <strong>检查汇总：</strong>
+              <span style="color: #67C23A;">成功 {{ successCount }}</span> / 
+              <span style="color: #F56C6C;">失败 {{ failedCount }}</span> / 
+              <span style="color: #909399;">总计 {{ checkResults.length }}</span>
             </div>
           </div>
         </div>
@@ -123,13 +168,13 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { quickTestAPI, testAPI } from '@/utils/apiTest'
-import { checkAPICompleteness, runFullCheck } from '@/utils/apiCompleteness'
-import { validateSelectOptions, createSafeSelectOptions } from '@/utils/dataValidator'
+import { cleanWMSLocalStorage, inspectLocalStorage, diagnoseStorageIssues } from '@/utils/cleanLocalStorage'
+import { wmsAPI } from '@/utils/api.js'
+// 测试工具已移除，改为使用内置的简单测试
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -141,6 +186,7 @@ const loginFormRef = ref()
 const loading = ref(false)
 const testing = ref(false)
 const checkingAPI = ref(false)
+const cleaning = ref(false)
 
 // 登录表单数据
 const loginForm = reactive({
@@ -155,7 +201,8 @@ const loginRules = {
     { required: true, message: '请输入用户名', trigger: 'blur' }
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' }
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
   ]
 }
 
@@ -223,88 +270,101 @@ const handleLogin = async () => {
   })
 }
 
-// 测试连接
+// 简化的连接测试
 const testConnection = async () => {
   testing.value = true
   try {
     console.log('🔗 开始连接测试...')
-    await quickTestAPI()
+    // 使用导入的wmsAPI进行健康检查
+    const result = await wmsAPI.healthCheck()
+    if (result) {
+      ElMessage.success('后端连接正常')
+      console.log('✅ 连接测试成功')
+    } else {
+      throw new Error('健康检查失败')
+    }
   } catch (error) {
     console.error('连接测试失败:', error)
+    ElMessage.error('连接测试失败，请检查后端服务是否启动')
   } finally {
     testing.value = false
   }
 }
 
-// 完整API测试
+// 简化的API测试
 const testFullAPI = async () => {
   testing.value = true
   try {
-    console.log('🧪 开始完整API测试...')
-    const results = await testAPI()
-    console.log('测试结果:', results)
+    console.log('🧪 开始API测试...')
+    // 尝试获取基础数据来测试API
+    const [users, products, warehouses] = await Promise.all([
+      wmsAPI.getUsers({ page: 1, page_size: 1 }),
+      wmsAPI.getProducts({ page: 1, page_size: 1 }),
+      wmsAPI.getWarehouses({ page: 1, page_size: 1 })
+    ])
+    
+    console.log('✅ API测试完成:', {
+      users: users ? '✅' : '❌',
+      products: products ? '✅' : '❌', 
+      warehouses: warehouses ? '✅' : '❌'
+    })
+    
+    ElMessage.success('API功能测试完成，查看控制台获取详情')
   } catch (error) {
-    console.error('完整测试失败:', error)
+    console.error('API测试失败:', error)
+    ElMessage.error('API测试失败，请确保后端服务正在运行')
   } finally {
     testing.value = false
   }
 }
 
-// API健康检查
-const checkAPIHealth = async () => {
+// 简化的健康检查
+const checkDataSource = async () => {
   checkingAPI.value = true
   try {
-    console.log('🔧 开始API健康检查...')
+    console.log('🎯 开始数据源检查...')
     
-    // 1. 检查API完整性
-    const completenessResult = checkAPICompleteness()
+    // 检查API连接
+    await wmsAPI.healthCheck()
+    console.log('✅ API连接正常')
     
-    // 2. 运行完整检查
-    const fullReport = runFullCheck()
+    // 检查本地数据状态
+    const inspection = inspectLocalStorage()
+    const diagnosis = diagnoseStorageIssues()
     
-    // 3. 检查数据验证
-    console.log('📊 数据验证测试...')
-    
-    // 测试选择器选项验证
-    const testOptions = [
-      { id: 1, name: '测试选项1' },
-      { id: 2, name: '测试选项2' },
-      null, // 无效数据
-      { id: undefined, name: '无效选项' }, // 无效数据
-      { id: 3, name: '测试选项3' }
-    ]
-    
-    const safeOptions = createSafeSelectOptions(testOptions, {
-      keyField: 'id',
-      labelField: 'name',
-      valueField: 'id'
-    })
-    
-    console.log('✅ 选择器选项验证完成:', safeOptions)
-    
-    // 4. 显示检查结果
-    const summary = {
-      api完整度: `${completenessResult.completeness}%`,
-      缺失函数: completenessResult.missingCount,
-      建议数量: fullReport.recommendations.length,
-      数据验证: '正常'
-    }
-    
-    console.log('📋 健康检查报告:', summary)
-    
-    if (completenessResult.completeness >= 90) {
-      ElMessage.success(`API健康状况良好 (${completenessResult.completeness}%)`)
-    } else if (completenessResult.completeness >= 70) {
-      ElMessage.warning(`API需要改进 (${completenessResult.completeness}%)，缺失${completenessResult.missingCount}个函数`)
+    if (inspection.total > 0) {
+      ElMessage.warning('检测到本地存储数据，建议清理后使用纯数据库模式')
     } else {
-      ElMessage.error(`API存在严重问题 (${completenessResult.completeness}%)，请查看控制台详情`)
+      ElMessage.success('系统处于纯数据库模式，数据源状态正常')
     }
     
   } catch (error) {
-    console.error('❌ API健康检查失败:', error)
-    ElMessage.error('API健康检查失败')
+    console.error('❌ 数据源检查失败:', error)
+    ElMessage.error('数据源检查失败')
   } finally {
     checkingAPI.value = false
+  }
+}
+
+// 清理本地数据
+const cleanLocalData = async () => {
+  cleaning.value = true
+  try {
+    console.log('🧹 开始清理本地数据...')
+    
+    // 使用工具清理业务数据
+    const result = cleanWMSLocalStorage()
+    
+    // 显示清理后状态
+    const inspection = inspectLocalStorage()
+    
+    ElMessage.success(`本地数据清理完成，清理了 ${result.removed} 个存储项`)
+    
+  } catch (error) {
+    console.error('❌ 本地数据清理失败:', error)
+    ElMessage.error('本地数据清理失败')
+  } finally {
+    cleaning.value = false
   }
 }
 
@@ -319,6 +379,118 @@ const initRememberUser = () => {
 
 // 初始化
 initRememberUser()
+
+// 数据库检查相关
+const checking = ref(false)
+const checkResults = ref([])
+
+// 计算成功和失败的数量
+const successCount = computed(() => checkResults.value.filter(r => r.status === 'success').length)
+const failedCount = computed(() => checkResults.value.filter(r => r.status === 'failed').length)
+
+// 全面检查数据库连接
+const checkDatabaseConnection = async () => {
+  checking.value = true
+  checkResults.value = []
+  
+  const checkList = [
+    // 基础数据接口
+    { name: '用户认证', api: () => wmsAPI.getCurrentUser() },
+    { name: '商品列表', api: () => wmsAPI.getProducts({ page_size: 1 }) },
+    { name: '商品分类', api: () => wmsAPI.getCategories({ page_size: 1 }) },
+    { name: '品牌列表', api: () => wmsAPI.getBrands({ page_size: 1 }) },
+    { name: '供应商列表', api: () => wmsAPI.getSuppliers({ page_size: 1 }) },
+    { name: '客户列表', api: () => wmsAPI.getCustomers({ page_size: 1 }) },
+    
+    // 仓库数据接口
+    { name: '仓库列表', api: () => wmsAPI.getWarehouses({ page_size: 1 }) },
+    { name: '库区列表', api: () => wmsAPI.getZones({ page_size: 1 }) },
+    { name: '库位列表', api: () => wmsAPI.getLocations({ page_size: 1 }) },
+    
+    // 库存数据接口
+    { name: '库存数据', api: () => wmsAPI.getInventoryStock({ page_size: 1 }) },
+    { name: '库存变动', api: () => wmsAPI.getInventoryMovements({ page_size: 1 }) },
+    { name: '库存预警', api: () => wmsAPI.getInventoryAlerts({ page_size: 1 }) },
+    { name: '库存盘点', api: () => wmsAPI.getInventoryCount({ page_size: 1 }) },
+    
+    // 入库数据接口
+    { name: '入库订单', api: () => wmsAPI.getInboundOrders({ page_size: 1 }) },
+    { name: '采购入库', api: () => wmsAPI.getInboundPurchase({ page_size: 1 }) },
+    
+    // 出库数据接口
+    { name: '出库订单', api: () => wmsAPI.getOutboundOrders({ page_size: 1 }) },
+    { name: '销售出库', api: () => wmsAPI.getOutboundSales({ page_size: 1 }) },
+    
+    // 系统数据接口
+    { name: '用户管理', api: () => wmsAPI.getUsers({ page_size: 1 }) },
+    { name: '角色管理', api: () => wmsAPI.getRoles({ page_size: 1 }) },
+    { name: '权限管理', api: () => wmsAPI.getPermissions({ page_size: 1 }) }
+  ]
+  
+  console.log('🔍 开始全面检查数据库连接...')
+  
+  // 并发检查所有接口
+  const promises = checkList.map(async (item) => {
+    try {
+      const startTime = Date.now()
+      const result = await item.api()
+      const endTime = Date.now()
+      const responseTime = endTime - startTime
+      
+      // 检查响应数据的完整性
+      let detail = `${responseTime}ms`
+      if (result) {
+        if (result.count !== undefined) {
+          detail += ` | 数据量: ${result.count}`
+        } else if (Array.isArray(result)) {
+          detail += ` | 数据量: ${result.length}`
+        } else if (result.results && Array.isArray(result.results)) {
+          detail += ` | 数据量: ${result.results.length}`
+        }
+      }
+      
+      return {
+        name: item.name,
+        status: 'success',
+        detail: detail,
+        responseTime: responseTime
+      }
+    } catch (error) {
+      console.error(`❌ ${item.name} 检查失败:`, error)
+      return {
+        name: item.name,
+        status: 'failed',
+        detail: error.response?.status ? `HTTP ${error.response.status}` : error.message,
+        error: error
+      }
+    }
+  })
+  
+  // 等待所有检查完成
+  const results = await Promise.all(promises)
+  checkResults.value = results.sort((a, b) => {
+    // 先按状态排序（成功的在前），再按名称排序
+    if (a.status !== b.status) {
+      return a.status === 'success' ? -1 : 1
+    }
+    return a.name.localeCompare(b.name)
+  })
+  
+  const successCount = results.filter(r => r.status === 'success').length
+  const failedCount = results.filter(r => r.status === 'failed').length
+  
+  console.log(`✅ 数据库连接检查完成: 成功 ${successCount}/${results.length}，失败 ${failedCount}`)
+  
+  if (failedCount === 0) {
+    ElMessage.success(`🎉 所有接口连接正常！共检查 ${results.length} 个接口`)
+  } else if (successCount > 0) {
+    ElMessage.warning(`⚠️ 部分接口异常：${successCount} 个正常，${failedCount} 个异常`)
+  } else {
+    ElMessage.error(`❌ 所有接口都无法连接，请检查后端服务`)
+  }
+  
+  checking.value = false
+}
 </script>
 
 <style lang="scss" scoped>
@@ -409,5 +581,45 @@ initRememberUser()
       }
     }
   }
+}
+
+.data-source-section {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.check-results {
+  max-height: 300px;
+  overflow-y: auto;
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.check-item:last-child {
+  border-bottom: none;
+}
+
+.check-name {
+  font-weight: 500;
+  min-width: 100px;
+  margin-right: 10px;
+}
+
+.check-detail {
+  color: #666;
+  font-size: 12px;
+  flex: 1;
 }
 </style>

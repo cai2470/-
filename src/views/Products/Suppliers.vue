@@ -465,7 +465,16 @@ const loadSuppliers = async () => {
       }
     }
     
-    suppliers.value = suppliersData
+    // 🔧 处理字段映射：后端字段 -> 前端字段
+    suppliers.value = suppliersData.map(supplier => ({
+      ...supplier,
+      // 后端 contact_person -> 前端 contact
+      contact: supplier.contact_person || supplier.contact || '',
+      // 后端 contact_phone -> 前端 phone  
+      phone: supplier.contact_phone || supplier.phone || '',
+      // 后端 contact_email -> 前端 email
+      email: supplier.contact_email || supplier.email || ''
+    }))
     pagination.total = total
     
     console.log('📊 供应商数据加载完成:', {
@@ -609,12 +618,13 @@ const saveSupplier = async () => {
     await formRef.value.validate()
     saving.value = true
     
+    // 🔧 修复字段映射 - 使用后端期望的字段名
     const supplierData = {
       code: supplierForm.code,
       name: supplierForm.name,
-      contact: supplierForm.contact,
-      phone: supplierForm.phone,
-      email: supplierForm.email || '',
+      contact_person: supplierForm.contact,    // 🔧 contact -> contact_person
+      contact_phone: supplierForm.phone,       // 🔧 phone -> contact_phone
+      contact_email: supplierForm.email || '',  // 🔧 email -> contact_email
       address: supplierForm.address,
       credit_rating: supplierForm.credit_rating || 3,
       cooperation_type: supplierForm.cooperation_type || '长期合作',
@@ -636,44 +646,29 @@ const saveSupplier = async () => {
         ElMessage.success('添加成功')
       }
       
-      // 重新加载数据
+      // 成功后关闭对话框并重新加载数据
+      dialogVisible.value = false
+      resetForm()
       await loadSuppliers()
       
     } catch (error) {
-      console.error('❌ 保存失败:', error)
+      console.error('❌ 保存供应商失败:', error)
       
-      // API失败时的降级处理
-    if (supplierForm.id) {
-      // 编辑模式
-      const index = suppliers.value.findIndex(s => s.id === supplierForm.id)
-      if (index !== -1) {
-        suppliers.value[index] = { ...supplierForm, status: suppliers.value[index].status }
+      // 🔧 改进错误处理：不重复显示错误信息，因为拦截器已经处理了
+      if (error.response?.status === 400) {
+        // 400错误的具体信息已经在拦截器中显示，这里只记录日志
+        console.log('📋 字段验证失败，请检查：')
+        console.log('- 供应商数据:', supplierData)
+      } else {
+        // 其他错误显示通用消息
+        ElMessage.error('保存供应商失败，请稍后重试')
       }
-        ElMessage.warning('API连接失败，编辑已保存到本地')
-    } else {
-      // 添加模式
-      const newSupplier = {
-        ...supplierForm,
-        id: Date.now(),
-        status: 1
-      }
-      suppliers.value.unshift(newSupplier)
-      pagination.total = suppliers.value.length
-        ElMessage.warning('API连接失败，添加已保存到本地')
+    } finally {
+      saving.value = false
     }
-    
-      // 保存到本地存储
-      localStorage.setItem('wms_suppliers', JSON.stringify(suppliers.value))
-    }
-    
-    dialogVisible.value = false
-    resetForm()
     
   } catch (error) {
-    if (error !== false) {
-      ElMessage.error('保存失败')
-    }
-  } finally {
+    console.error('❌ 表单验证失败:', error)
     saving.value = false
   }
 }

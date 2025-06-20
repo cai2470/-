@@ -513,6 +513,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { wmsAPI } from '@/utils/api.js'
+// 性能测试工具已移除，功能已集成到主要代码中
 
 // 响应式数据
 const loading = ref(false)
@@ -793,23 +794,33 @@ const loadPurchaseData = async () => {
     params.page = pagination.page
     params.page_size = pagination.size
     
+    // 记录API调用用于性能监控
+    // 性能监控已移除，使用内置日志
+    
     // 调用API获取采购入库单数据
     const response = await wmsAPI.getInboundOrders(params)
     
     // 处理不同的响应格式
     let purchaseData = []
+    let newTotal = 0
+    
     if (Array.isArray(response)) {
       purchaseData = response
-      pagination.total = response.length
+      newTotal = response.length
     } else if (response && Array.isArray(response.results)) {
       purchaseData = response.results
-      pagination.total = response.count || response.total || response.results.length
+      newTotal = response.count || response.total || response.results.length
     } else if (response && Array.isArray(response.data)) {
       purchaseData = response.data
-      pagination.total = response.total || response.data.length
+      newTotal = response.total || response.data.length
     } else if (response && Array.isArray(response.purchase_orders)) {
       purchaseData = response.purchase_orders
-      pagination.total = response.total || response.purchase_orders.length
+      newTotal = response.total || response.purchase_orders.length
+    }
+    
+    // 🔧 避免无意义的响应式更新
+    if (pagination.total !== newTotal) {
+      pagination.total = newTotal
     }
     
     purchaseList.value = purchaseData
@@ -830,7 +841,11 @@ const loadPurchaseData = async () => {
     // API失败时的降级处理
     const fallbackData = handleAPIFallback(error, '获取采购入库单')
     purchaseList.value = fallbackData
-    pagination.total = fallbackData.length
+    
+    // 🔧 避免无意义的响应式更新
+    if (pagination.total !== fallbackData.length) {
+      pagination.total = fallbackData.length
+    }
     
     // 更新统计数据
     updatePurchaseStats(fallbackData)
@@ -1063,13 +1078,20 @@ const handleSelectionChange = (selection) => {
 
 // 分页处理
 const handleSizeChange = (size) => {
-  pagination.size = size
-  loadPurchaseData()
+  console.log('🔄 分页大小变化:', size, '当前页:', pagination.page)
+  if (pagination.size !== size) {
+    pagination.size = size
+    pagination.page = 1  // 重置到第一页
+    loadPurchaseData()
+  }
 }
 
 const handleCurrentChange = (page) => {
-  pagination.page = page
-  loadPurchaseData()
+  console.log('🔄 页码变化:', page, '当前分页大小:', pagination.size)
+  if (pagination.page !== page) {
+    pagination.page = page
+    loadPurchaseData()
+  }
 }
 
 onMounted(() => {

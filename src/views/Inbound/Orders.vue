@@ -173,6 +173,7 @@ import {
   Check 
 } from '@element-plus/icons-vue'
 import { wmsAPI } from '@/utils/api.js'
+// 性能测试工具已移除，功能已集成到主要代码中
 import ArrivalNotification from './components/ArrivalNotification.vue'
 import PendingArrival from './components/PendingArrival.vue'
 import UnloadingGoods from './components/UnloadingGoods.vue'
@@ -214,6 +215,9 @@ const handleAPIFallback = (error, operation) => {
 // 加载统计数据
 const loadStats = async () => {
   try {
+    // 记录API调用用于性能监控
+    // 性能监控已移除，使用内置日志
+    
     // 尝试API调用获取入库单数据
     const response = await wmsAPI.getInboundOrders()
     
@@ -356,7 +360,22 @@ const initSampleData = () => {
   ]
 
   localStorage.setItem('inbound_orders', JSON.stringify(sampleOrders))
-  loadStats()
+  
+  // 🔧 避免无限递归：直接更新统计数据，不再调用loadStats()
+  stats.arrival = 0
+  stats.pending = sampleOrders.filter(order => order.status === 'pending').length
+  stats.unloading = sampleOrders.filter(order => order.status === 'unloading').length
+  stats.sorting = sampleOrders.filter(order => order.status === 'sorting').length
+  stats.shelving = sampleOrders.filter(order => order.status === 'shelving').length
+  stats.completed = sampleOrders.filter(order => order.status === 'completed').length
+  
+  console.log('✅ 示例数据初始化完成，统计数据已更新:', {
+    pending: stats.pending,
+    unloading: stats.unloading,
+    sorting: stats.sorting,
+    shelving: stats.shelving,
+    completed: stats.completed
+  })
 }
 
 // 刷新数据

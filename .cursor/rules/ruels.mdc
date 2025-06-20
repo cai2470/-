@@ -3,4 +3,4 @@ description: 当用户想要访问、修改前端页面或者查看浏览器相�
 globs: 
 alwaysApply: false
 ---
-当我输入/brower命令时 请你采用browser-tools  mcp来进行相关操作。
+当我输入/browser命令时 请你采用browser-tools  mcp来进行相关操作。

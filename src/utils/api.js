@@ -84,52 +84,64 @@ apiClient.interceptors.response.use(
     // 返回响应数据
     return data
   },
-  async (error) => {
-    // 关闭加载状态
-    if (error.config?.loadingInstance) {
-      error.config.loadingInstance.close()
-    }
-    
-    const { config, response } = error
-    const status = response?.status
-    const data = response?.data
-    
+  (error) => {
     console.error('❌ API Error:', {
-      status,
-      url: config?.url,
-      method: config?.method,
-      data: data,
+      status: error.response?.status,
+      url: error.config?.url,
+      method: error.config?.method,
+      data: error.config?.data,
       message: error.message
     })
-    
-    // 处理特定状态码
-    switch (status) {
-      case 401:
-        await handleUnauthorized()
-        break
-      case 403:
-        ElMessage.error('权限不足，请联系管理员')
-        break
-      case 404:
-        ElMessage.error('请求的资源不存在')
-        break
-      case 500:
-        ElMessage.error('服务器内部错误，请稍后重试')
-        break
-      case 502:
-      case 503:
-      case 504:
-        // 网络错误，尝试重试
-        if (config && shouldRetry(config)) {
-          return retry(config)
+
+    // 🔧 改进错误处理：显示具体的验证错误
+    if (error.response?.status === 400 && error.response?.data) {
+      const errorData = error.response.data
+      let errorMessage = '请求参数错误：\n'
+      
+      // 处理DRF标准错误格式
+      if (typeof errorData === 'object') {
+        if (errorData.non_field_errors) {
+          errorMessage += errorData.non_field_errors.join('\n')
+        } else {
+          // 处理字段级错误
+          const fieldErrors = []
+          Object.entries(errorData).forEach(([field, errors]) => {
+            if (Array.isArray(errors)) {
+              fieldErrors.push(`${field}: ${errors.join(', ')}`)
+            } else if (typeof errors === 'string') {
+              fieldErrors.push(`${field}: ${errors}`)
+            }
+          })
+          
+          if (fieldErrors.length > 0) {
+            errorMessage += fieldErrors.join('\n')
+          } else {
+            errorMessage += JSON.stringify(errorData, null, 2)
+          }
         }
-        ElMessage.error('网络连接异常，请检查网络设置')
-        break
-      default:
-        const errorMsg = data?.error || data?.message || error.message || `请求失败 (${status})`
-        ElMessage.error(errorMsg)
+      } else {
+        errorMessage += errorData
+      }
+      
+      ElMessage.error({
+        message: errorMessage,
+        duration: 5000,
+        showClose: true
+      })
+    } else if (error.response?.status === 401) {
+      ElMessage.error('认证失败，请重新登录')
+      // 跳转到登录页面
+      window.location.href = '/login'
+    } else if (error.response?.status === 403) {
+      ElMessage.error('权限不足，无法访问该资源')
+    } else if (error.response?.status === 404) {
+      ElMessage.error('请求的资源不存在')
+    } else if (error.response?.status >= 500) {
+      ElMessage.error('服务器内部错误，请稍后重试')
+    } else {
+      ElMessage.error(error.message || '网络错误')
     }
-    
+
     return Promise.reject(error)
   }
 )
@@ -174,62 +186,225 @@ function retry(config) {
  */
 class WmsAPI {
   
+  // ==================== 数据转换和验证函数 ====================
+  
+  /**
+   * 验证并转换供应商数据格式
+   */
+  _validateSupplierData(data) {
+    return {
+      name: data.name,
+      code: data.code,
+      contact_person: data.contact_person || data.contact,  // 字段映射
+      contact_phone: data.contact_phone || data.phone,      // 字段映射  
+      contact_email: data.contact_email || data.email || '',
+      address: data.address,
+      credit_rating: data.credit_rating || 3,
+      cooperation_type: data.cooperation_type || '长期合作',
+      remark: data.remark || ''
+    }
+  }
+  
+  /**
+   * 验证并转换商品数据格式
+   */
+  _validateProductData(data) {
+    // 单位映射
+    const unitMapping = {
+      '个': 'piece', '台': 'unit', '件': 'piece', '箱': 'box', 
+      '套': 'set', '包': 'pack', '瓶': 'bottle', '袋': 'bag'
+    }
+    
+    return {
+      name: data.name,
+      code: data.code,
+      barcode: data.barcode || '',
+      category_id: data.category_id,
+      brand_id: data.brand_id,
+      supplier_id: data.supplier_id,
+      description: data.description || '',
+      specifications: data.specifications || '',
+      unit: unitMapping[data.unit] || data.unit || 'unit',
+      price: parseFloat(data.price) || 0,
+      min_stock: parseInt(data.min_stock) || 10,
+      status: data.status || 'active',
+      images: data.images || [],
+      image: data.image || null
+    }
+  }
+  
+  /**
+   * 验证并转换分类数据格式
+   */
+  _validateCategoryData(data) {
+    return {
+      name: data.name,
+      code: data.code,
+      parent_id: data.parent_id || null,
+      sort_order: data.sort || data.sort_order || 0,
+      description: data.description || '',
+      status: data.status || 'active'
+    }
+  }
+  
+  /**
+   * 验证并转换品牌数据格式
+   */
+  _validateBrandData(data) {
+    return {
+      name: data.name,
+      code: data.code,
+      english_name: data.english_name || data.name_en || '',
+      country: data.country || '',
+      founded_year: data.founded_year || null,
+      sort_order: data.sort || data.sort_order || 0,
+      logo: data.logo || '',
+      description: data.description || '',
+      status: data.status || 'active'
+    }
+  }
+  
+  /**
+   * 验证并转换客户数据格式  
+   */
+  _validateCustomerData(data) {
+    return {
+      name: data.name,
+      code: data.code,
+      type: data.type || 'enterprise',
+      level: data.level || 'normal',
+      contact_person: data.contact_person || data.contact,
+      contact_phone: data.contact_phone || data.phone,
+      contact_email: data.contact_email || data.email || '',
+      address: data.address,
+      credit_limit: data.credit_limit || 0,
+      status: data.status || 'active',
+      remark: data.remark || ''
+    }
+  }
+  
+  /**
+   * 验证并转换仓库数据格式
+   */
+  _validateWarehouseData(data) {
+    // 只提取后端期待的字段，并确保数据格式正确
+    const validatedData = {
+      name: String(data.name || '').trim(),
+      code: String(data.code || '').trim().toUpperCase(),
+      type: String(data.type || 'normal').trim(),
+      contact_person: String(data.manager || data.contact_person || '').trim(),  // 后端期望的字段名
+      contact_phone: String(data.phone || data.contact_phone || '').trim(),      // 后端期望的字段名
+      address: String(data.address || '').trim(),
+      area: parseFloat(data.area) || 0,
+      status: data.status === 'active' ? 1 : (data.status === 'inactive' ? 0 : (parseInt(data.status) || 1))
+    }
+    
+    // 特殊处理某些字段以符合后端期望
+    if (validatedData.type === '主仓库') {
+      validatedData.type = 'main'
+    } else if (validatedData.type === '配送中心') {
+      validatedData.type = 'distribution'
+    } else if (validatedData.type === '分拨中心') {
+      validatedData.type = 'dispatch'
+    }
+    
+    // 处理description字段（可能来自remark字段）
+    if (data.description && String(data.description).trim()) {
+      validatedData.description = String(data.description).trim()
+    } else if (data.remark && String(data.remark).trim()) {
+      validatedData.description = String(data.remark).trim()
+    }
+    
+    // 移除空字符串字段
+    Object.keys(validatedData).forEach(key => {
+      if (validatedData[key] === '' || validatedData[key] === null || validatedData[key] === undefined) {
+        delete validatedData[key]
+      }
+    })
+    
+    console.log('🔧 最终验证数据:', validatedData)
+    
+    return validatedData
+  }
+  
+  /**
+   * 验证并转换库区数据格式
+   */
+  _validateZoneData(data) {
+    return {
+      name: data.name,
+      code: data.code,
+      warehouse_id: data.warehouse_id,
+      type: data.type || 'normal',
+      area: parseFloat(data.area) || 0,
+      capacity: parseInt(data.capacity) || 0,
+      status: data.status || 'active',
+      description: data.description || ''
+    }
+  }
+  
+  /**
+   * 验证并转换库位数据格式
+   */
+  _validateLocationData(data) {
+    return {
+      name: data.name,
+      code: data.code,
+      zone_id: data.zone_id,
+      type: data.type || 'normal',
+      capacity: parseInt(data.capacity) || 1,
+      status: data.status || 'active',
+      description: data.description || ''
+    }
+  }
+  
+  // ==================== 基础HTTP请求方法 ====================
+  
   // ==================== 认证接口 ====================
   
   /**
    * 用户登录
-   * POST /users/login/ 或 POST /api/auth/login/
+   * POST /auth/login/
    */
   async login(credentials) {
     try {
-      const { username, password } = credentials
+      console.log('🚀 开始API登录请求...')
       
-      console.log('🔐 尝试登录:', username)
+      const response = await apiClient.post('/auth/login/', {
+        username: credentials.username,
+        password: credentials.password
+      })
       
-      // 尝试主要登录接口
-      let response
-      try {
-        response = await apiClient.post('/users/login/', { username, password }, { showLoading: false })
-        console.log('✅ 主登录接口响应:', response)
-      } catch (error) {
-        console.warn('⚠️ 主登录接口失败，尝试备用接口:', error.message)
-        // 备用登录接口
-        response = await apiClient.post('/api/auth/login/', { username, password }, { showLoading: false })
-        console.log('✅ 备用登录接口响应:', response)
-      }
-    
-      // 处理不同的响应格式
+      console.log('📡 登录API响应:', response)
+      
+      // 处理多种可能的响应格式
       let tokenData = null
       let userData = null
       
-      // 格式1: Django默认格式 { "token": "...", "user": {...} }
-      if (response.token && response.user) {
-        tokenData = {
-          access: response.token,
-          refresh: response.refresh_token || null
-        }
-        userData = response.user
-      }
-      // 格式2: DRF JWT格式 { "access": "...", "refresh": "...", "user": {...} }
-      else if (response.access) {
-        tokenData = {
-          access: response.access,
-          refresh: response.refresh || null
-        }
+      // 格式1: 直接在根对象中
+      if (response.access) {
+        tokenData = response
         userData = response.user || null
       }
-      // 格式3: 自定义格式 { "success": true, "tokens": {...}, "user": {...} }
-      else if (response.success && response.tokens) {
+      // 格式2: 在tokens子对象中
+      else if (response.tokens) {
         tokenData = response.tokens
-        userData = response.user
+        userData = response.user || null
       }
-      // 格式4: 简单格式 { "access_token": "...", "user": {...} }
-      else if (response.access_token) {
-        tokenData = {
-          access: response.access_token,
-          refresh: response.refresh_token || null
+      // 格式3: 在data子对象中
+      else if (response.data) {
+        if (response.data.access) {
+          tokenData = response.data
+          userData = response.data.user || null
+        } else if (response.data.tokens) {
+          tokenData = response.data.tokens
+          userData = response.data.user || null
         }
-        userData = response.user
+      }
+      // 格式4: token字段名不同
+      else if (response.token) {
+        tokenData = { access: response.token, refresh: response.refresh_token }
+        userData = response.user || null
       }
       
       if (!tokenData || !tokenData.access) {
@@ -258,13 +433,7 @@ class WmsAPI {
     } catch (error) {
       console.error('❌ 登录失败:', error)
       
-      // 尝试降级处理
-      if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
-        console.warn('🔄 API登录失败，尝试降级处理...')
-        return this.loginFallback(credentials)
-      }
-      
-      // 处理具体错误
+      // 处理具体错误，不再使用降级
       if (error.response?.status === 401) {
         throw new Error('用户名或密码错误')
       } else if (error.response?.status === 400) {
@@ -274,49 +443,6 @@ class WmsAPI {
       } else {
         throw new Error(error.response?.data?.error || error.message || '登录失败')
       }
-    }
-  }
-  
-  /**
-   * 登录降级方案（仅在开发时使用）
-   */
-  loginFallback(credentials) {
-    console.warn('🔄 使用登录降级方案')
-    
-    const mockUsers = [
-      { username: 'admin', password: 'admin123', role: 'admin', name: '系统管理员' },
-      { username: 'manager', password: 'manager123', role: 'manager', name: '仓库经理' },
-      { username: 'operator', password: 'operator123', role: 'operator', name: '操作员' },
-      { username: 'testuser', password: '123456', role: 'staff', name: '测试用户' }
-    ]
-    
-    const user = mockUsers.find(u => 
-      u.username === credentials.username && u.password === credentials.password
-    )
-    
-    if (user) {
-      const mockTokens = {
-        access: 'mock_access_token_' + Date.now(),
-        refresh: 'mock_refresh_token_' + Date.now()
-      }
-      
-      localStorage.setItem('wms_access_token', mockTokens.access)
-      localStorage.setItem('wms_refresh_token', mockTokens.refresh)
-      localStorage.setItem('wms_user_info', JSON.stringify({
-        id: Math.floor(Math.random() * 1000),
-        username: user.username,
-        name: user.name,
-        role: user.role
-      }))
-      
-      ElMessage.success('登录成功（演示模式）')
-      return {
-        success: true,
-        tokens: mockTokens,
-        user: { username: user.username, name: user.name, role: user.role }
-      }
-    } else {
-      throw new Error('用户名或密码错误')
     }
   }
   
@@ -353,11 +479,6 @@ class WmsAPI {
     try {
       return await apiClient.get('/users/profile/')
     } catch (error) {
-      // 降级：从本地存储获取
-      const userInfo = localStorage.getItem('wms_user_info')
-      if (userInfo) {
-        return { success: true, user: JSON.parse(userInfo) }
-      }
       throw error
     }
   }
@@ -495,7 +616,7 @@ class WmsAPI {
    * GET /api/staff/
    */
   async getStaff(params = {}) {
-    return await apiClient.get('/api/staff/', { params })
+    return await apiClient.get('/users/staff/', { params })
   }
   
   /**
@@ -503,7 +624,7 @@ class WmsAPI {
    * POST /api/staff/
    */
   async createStaff(staffData) {
-    return await apiClient.post('/api/staff/', staffData)
+    return await apiClient.post('/users/staff/', staffData)
   }
   
   /**
@@ -511,7 +632,7 @@ class WmsAPI {
    * PUT /api/staff/{id}/
    */
   async updateStaff(id, staffData) {
-    return await apiClient.put(`/api/staff/${id}/`, staffData)
+    return await apiClient.put(`/users/staff/${id}/`, staffData)
   }
   
   /**
@@ -519,7 +640,7 @@ class WmsAPI {
    * DELETE /api/staff/{id}/
    */
   async deleteStaff(id) {
-    return await apiClient.delete(`/api/staff/${id}/`)
+    return await apiClient.delete(`/users/staff/${id}/`)
   }
   
   /**
@@ -527,7 +648,7 @@ class WmsAPI {
    * PUT /api/staff/{id}/status/
    */
   async updateStaffStatus(id, statusData) {
-    return await apiClient.put(`/api/staff/${id}/status/`, statusData)
+    return await apiClient.put(`/users/staff/${id}/status/`, statusData)
   }
   
   // ==================== 商品管理接口 ====================
@@ -549,7 +670,9 @@ class WmsAPI {
    * POST /products/products/
    */
   async createProduct(productData) {
-    return await apiClient.post('/products/products/', productData)
+    const validatedData = this._validateProductData(productData)
+    console.log('🔄 创建商品 - 验证后的数据:', validatedData)
+    return await apiClient.post('/products/products/', validatedData)
   }
   
   /**
@@ -557,7 +680,9 @@ class WmsAPI {
    * PUT /products/products/{id}/
    */
   async updateProduct(id, productData) {
-    return await apiClient.put(`/products/products/${id}/`, productData)
+    const validatedData = this._validateProductData(productData)
+    console.log('🔄 更新商品 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/products/products/${id}/`, validatedData)
   }
   
   /**
@@ -581,7 +706,27 @@ class WmsAPI {
    * POST /products/categories/
    */
   async createCategory(categoryData) {
-    return await apiClient.post('/products/categories/', categoryData)
+    const validatedData = this._validateCategoryData(categoryData)
+    console.log('🔄 创建分类 - 验证后的数据:', validatedData)
+    return await apiClient.post('/products/categories/', validatedData)
+  }
+  
+  /**
+   * 更新分类
+   * PUT /products/categories/{id}/
+   */
+  async updateCategory(id, categoryData) {
+    const validatedData = this._validateCategoryData(categoryData)
+    console.log('🔄 更新分类 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/products/categories/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除分类
+   * DELETE /products/categories/{id}/
+   */
+  async deleteCategory(id) {
+    return await apiClient.delete(`/products/categories/${id}/`)
   }
   
   /**
@@ -597,7 +742,27 @@ class WmsAPI {
    * POST /products/brands/
    */
   async createBrand(brandData) {
-    return await apiClient.post('/products/brands/', brandData)
+    const validatedData = this._validateBrandData(brandData)
+    console.log('🔄 创建品牌 - 验证后的数据:', validatedData)
+    return await apiClient.post('/products/brands/', validatedData)
+  }
+  
+  /**
+   * 更新品牌
+   * PUT /products/brands/{id}/
+   */
+  async updateBrand(id, brandData) {
+    const validatedData = this._validateBrandData(brandData)
+    console.log('🔄 更新品牌 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/products/brands/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除品牌
+   * DELETE /products/brands/{id}/
+   */
+  async deleteBrand(id) {
+    return await apiClient.delete(`/products/brands/${id}/`)
   }
   
   /**
@@ -613,7 +778,65 @@ class WmsAPI {
    * POST /products/suppliers/
    */
   async createSupplier(supplierData) {
-    return await apiClient.post('/products/suppliers/', supplierData)
+    const validatedData = this._validateSupplierData(supplierData)
+    console.log('🔄 创建供应商 - 验证后的数据:', validatedData)
+    return await apiClient.post('/products/suppliers/', validatedData)
+  }
+  
+  /**
+   * 更新供应商
+   * PUT /products/suppliers/{id}/
+   */
+  async updateSupplier(id, supplierData) {
+    const validatedData = this._validateSupplierData(supplierData)
+    console.log('🔄 更新供应商 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/products/suppliers/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除供应商
+   * DELETE /products/suppliers/{id}/
+   */
+  async deleteSupplier(id) {
+    return await apiClient.delete(`/products/suppliers/${id}/`)
+  }
+  
+  // ==================== 客户管理接口 ====================
+  
+  /**
+   * 获取客户列表
+   * GET /products/customers/
+   */
+  async getCustomers(params = {}) {
+    return await apiClient.get('/products/customers/', { params })
+  }
+  
+  /**
+   * 创建客户
+   * POST /products/customers/
+   */
+  async createCustomer(customerData) {
+    const validatedData = this._validateCustomerData(customerData)
+    console.log('🔄 创建客户 - 验证后的数据:', validatedData)
+    return await apiClient.post('/products/customers/', validatedData)
+  }
+  
+  /**
+   * 更新客户
+   * PUT /products/customers/{id}/
+   */
+  async updateCustomer(id, customerData) {
+    const validatedData = this._validateCustomerData(customerData)
+    console.log('🔄 更新客户 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/products/customers/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除客户
+   * DELETE /products/customers/{id}/
+   */
+  async deleteCustomer(id) {
+    return await apiClient.delete(`/products/customers/${id}/`)
   }
   
   // ==================== 仓库管理接口 ====================
@@ -631,7 +854,73 @@ class WmsAPI {
    * POST /warehouse/warehouses/
    */
   async createWarehouse(warehouseData) {
-    return await apiClient.post('/warehouse/warehouses/', warehouseData)
+    const validatedData = this._validateWarehouseData(warehouseData)
+    console.log('🔄 创建仓库 - 验证后的数据:', validatedData)
+    
+    try {
+      const response = await apiClient.post('/warehouse/warehouses/', validatedData)
+      return response
+    } catch (error) {
+      // 详细错误日志
+      console.error('🚨 创建仓库API错误详情:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method,
+        requestData: validatedData
+      })
+      
+      // 详细显示后端验证错误
+      if (error.response?.data) {
+        console.error('📋 后端验证错误详情:', error.response.data)
+        if (error.response.data.details) {
+          console.error('📝 字段验证错误:', error.response.data.details)
+        }
+      }
+      
+      // 如果400错误，尝试简化数据格式
+      if (error.response?.status === 400) {
+        console.log('🔄 尝试使用简化数据格式...')
+        const simpleData = {
+          name: warehouseData.name,
+          code: warehouseData.code,
+          type: warehouseData.type || '主仓库',
+          contact_person: warehouseData.manager,  // 使用后端期望的字段名
+          contact_phone: warehouseData.phone,     // 使用后端期望的字段名
+          address: warehouseData.address
+        }
+        
+        try {
+          console.log('🔄 简化数据:', simpleData)
+          const retryResponse = await apiClient.post('/warehouse/warehouses/', simpleData)
+          console.log('✅ 简化数据创建成功')
+          return retryResponse
+        } catch (retryError) {
+          console.error('🚨 简化数据仍然失败:', retryError.response?.data)
+        }
+      }
+      
+      throw error
+    }
+  }
+  
+  /**
+   * 更新仓库
+   * PUT /warehouse/warehouses/{id}/
+   */
+  async updateWarehouse(id, warehouseData) {
+    const validatedData = this._validateWarehouseData(warehouseData)
+    console.log('🔄 更新仓库 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/warehouse/warehouses/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除仓库
+   * DELETE /warehouse/warehouses/{id}/
+   */
+  async deleteWarehouse(id) {
+    return await apiClient.delete(`/warehouse/warehouses/${id}/`)
   }
   
   /**
@@ -647,7 +936,27 @@ class WmsAPI {
    * POST /warehouse/zones/
    */
   async createZone(zoneData) {
-    return await apiClient.post('/warehouse/zones/', zoneData)
+    const validatedData = this._validateZoneData(zoneData)
+    console.log('🔄 创建库区 - 验证后的数据:', validatedData)
+    return await apiClient.post('/warehouse/zones/', validatedData)
+  }
+  
+  /**
+   * 更新库区
+   * PUT /warehouse/zones/{id}/
+   */
+  async updateZone(id, zoneData) {
+    const validatedData = this._validateZoneData(zoneData)
+    console.log('🔄 更新库区 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/warehouse/zones/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除库区
+   * DELETE /warehouse/zones/{id}/
+   */
+  async deleteZone(id) {
+    return await apiClient.delete(`/warehouse/zones/${id}/`)
   }
   
   /**
@@ -663,7 +972,27 @@ class WmsAPI {
    * POST /warehouse/locations/
    */
   async createLocation(locationData) {
-    return await apiClient.post('/warehouse/locations/', locationData)
+    const validatedData = this._validateLocationData(locationData)
+    console.log('🔄 创建库位 - 验证后的数据:', validatedData)
+    return await apiClient.post('/warehouse/locations/', validatedData)
+  }
+  
+  /**
+   * 更新库位
+   * PUT /warehouse/locations/{id}/
+   */
+  async updateLocation(id, locationData) {
+    const validatedData = this._validateLocationData(locationData)
+    console.log('🔄 更新库位 - 验证后的数据:', validatedData)
+    return await apiClient.put(`/warehouse/locations/${id}/`, validatedData)
+  }
+  
+  /**
+   * 删除库位
+   * DELETE /warehouse/locations/{id}/
+   */
+  async deleteLocation(id) {
+    return await apiClient.delete(`/warehouse/locations/${id}/`)
   }
   
   // ==================== 库存管理接口 ====================
@@ -1240,14 +1569,6 @@ class WmsAPI {
    */
   isAuthenticated() {
     return !!localStorage.getItem('wms_access_token')
-  }
-  
-  /**
-   * 获取本地用户信息
-   */
-  getCurrentUserLocal() {
-    const userInfo = localStorage.getItem('wms_user_info')
-    return userInfo ? JSON.parse(userInfo) : null
   }
   
   /**
