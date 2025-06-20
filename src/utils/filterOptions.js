@@ -2,39 +2,63 @@
 // 用于动态加载各种筛选数据，确保与实际存储数据同步
 
 /**
+ * 数据验证和清理工具函数
+ * @param {*} data - 需要验证的数据
+ * @param {Array} defaultData - 默认数据
+ * @param {Function} validator - 验证函数
+ * @param {Function} mapper - 映射函数
+ * @returns {Array} 验证后的数据数组
+ */
+const validateAndCleanData = (data, defaultData, validator, mapper) => {
+  try {
+    if (!Array.isArray(data)) {
+      console.warn('数据不是数组格式，使用默认数据')
+      return defaultData
+    }
+    
+    const validData = data
+      .filter(validator)
+      .map(mapper)
+      .filter(item => item && item.id !== undefined && item.label && item.value !== undefined)
+    
+    return validData.length > 0 ? validData : defaultData
+  } catch (error) {
+    console.error('数据验证失败:', error)
+    return defaultData
+  }
+}
+
+/**
  * 获取启用的仓库列表
  * @returns {Array} 仓库选项数组
  */
 export const getWarehouseOptions = () => {
   try {
     const stored = localStorage.getItem('wms_warehouses')
+    const defaultWarehouses = [
+      { id: 1, label: '主仓库', value: 1, code: 'WH001' },
+      { id: 2, label: '北京仓库', value: 2, code: 'WH002' },
+      { id: 3, label: '上海仓库', value: 3, code: 'WH003' }
+    ]
+    
     if (!stored) {
-      return [
-        { id: 1, label: '主仓库', value: 1, code: 'WH001' },
-        { id: 2, label: '北京仓库', value: 2, code: 'WH002' },
-        { id: 3, label: '上海仓库', value: 3, code: 'WH003' }
-      ]
+      return defaultWarehouses
     }
     
     const warehouses = JSON.parse(stored)
-    if (!Array.isArray(warehouses)) {
-      console.warn('仓库数据不是数组格式，使用默认数据')
-      return [
-        { id: 1, label: '主仓库', value: 1, code: 'WH001' },
-        { id: 2, label: '北京仓库', value: 2, code: 'WH002' },
-        { id: 3, label: '上海仓库', value: 3, code: 'WH003' }
-      ]
-    }
     
-    return warehouses
-      .filter(w => w && w.status === 1)
-      .map(w => ({
+    return validateAndCleanData(
+      warehouses,
+      defaultWarehouses,
+      w => w && typeof w === 'object' && w.id && w.name && (w.status === undefined || w.status === 1),
+      w => ({
         id: w.id,
         label: w.name || '未知仓库',
         value: w.id,
-        code: w.code || 'UNKNOWN'
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label))
+        code: w.code || `WH${w.id.toString().padStart(3, '0')}`
+      })
+    ).sort((a, b) => a.label.localeCompare(b.label))
+    
   } catch (error) {
     console.error('获取仓库选项失败:', error)
     return [

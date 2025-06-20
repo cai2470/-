@@ -769,7 +769,7 @@ const toggleStatusInLocalStorage = (staff) => {
       staffData[index].status = staff.status === 'active' ? 'inactive' : 'active'
       localStorage.setItem('wms_staff', JSON.stringify(staffData))
       ElMessage.success(`员工状态已更新 (本地数据)`)
-      loadStaffList()
+    loadStaffList()
     }
   } catch (error) {
     console.error('在localStorage中更新员工状态失败:', error)

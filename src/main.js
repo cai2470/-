@@ -12,6 +12,11 @@ import './styles/index.scss'
 // 导入数据初始化工具
 import { initAllData, checkDataIntegrity } from './utils/initData'
 
+// 在开发环境加载API路径测试工具
+if (import.meta.env.DEV) {
+  import('./utils/apiPathTest.js')
+}
+
 // 创建Vue应用实例
 const app = createApp(App)
 

@@ -182,34 +182,98 @@ class WmsAPI {
    */
   async login(credentials) {
     try {
-    const { username, password } = credentials
+      const { username, password } = credentials
+      
+      console.log('🔐 尝试登录:', username)
       
       // 尝试主要登录接口
       let response
       try {
-        response = await apiClient.post('/users/login/', { username, password })
+        response = await apiClient.post('/users/login/', { username, password }, { showLoading: false })
+        console.log('✅ 主登录接口响应:', response)
       } catch (error) {
+        console.warn('⚠️ 主登录接口失败，尝试备用接口:', error.message)
         // 备用登录接口
-        response = await apiClient.post('/api/auth/login/', { username, password })
+        response = await apiClient.post('/api/auth/login/', { username, password }, { showLoading: false })
+        console.log('✅ 备用登录接口响应:', response)
       }
     
-    // 保存认证信息
-    if (response.success && response.tokens) {
-      localStorage.setItem('wms_access_token', response.tokens.access)
-      localStorage.setItem('wms_refresh_token', response.tokens.refresh)
-      localStorage.setItem('wms_user_info', JSON.stringify(response.user))
+      // 处理不同的响应格式
+      let tokenData = null
+      let userData = null
       
-      ElMessage.success('登录成功')
-      console.log('✅ 登录成功，用户信息已保存')
-    }
+      // 格式1: Django默认格式 { "token": "...", "user": {...} }
+      if (response.token && response.user) {
+        tokenData = {
+          access: response.token,
+          refresh: response.refresh_token || null
+        }
+        userData = response.user
+      }
+      // 格式2: DRF JWT格式 { "access": "...", "refresh": "...", "user": {...} }
+      else if (response.access) {
+        tokenData = {
+          access: response.access,
+          refresh: response.refresh || null
+        }
+        userData = response.user || null
+      }
+      // 格式3: 自定义格式 { "success": true, "tokens": {...}, "user": {...} }
+      else if (response.success && response.tokens) {
+        tokenData = response.tokens
+        userData = response.user
+      }
+      // 格式4: 简单格式 { "access_token": "...", "user": {...} }
+      else if (response.access_token) {
+        tokenData = {
+          access: response.access_token,
+          refresh: response.refresh_token || null
+        }
+        userData = response.user
+      }
+      
+      if (!tokenData || !tokenData.access) {
+        throw new Error('登录响应格式异常：未找到有效Token')
+      }
     
-    return response
+      // 保存认证信息
+      localStorage.setItem('wms_access_token', tokenData.access)
+      if (tokenData.refresh) {
+        localStorage.setItem('wms_refresh_token', tokenData.refresh)
+      }
+      if (userData) {
+        localStorage.setItem('wms_user_info', JSON.stringify(userData))
+      }
+      
+      console.log('✅ 登录成功，Token已保存')
+      ElMessage.success('登录成功')
+      
+      return {
+        success: true,
+        access: tokenData.access,
+        refresh: tokenData.refresh,
+        user: userData
+      }
+      
     } catch (error) {
-      // 如果API失败且启用本地存储降级
+      console.error('❌ 登录失败:', error)
+      
+      // 尝试降级处理
       if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
+        console.warn('🔄 API登录失败，尝试降级处理...')
         return this.loginFallback(credentials)
       }
-      throw error
+      
+      // 处理具体错误
+      if (error.response?.status === 401) {
+        throw new Error('用户名或密码错误')
+      } else if (error.response?.status === 400) {
+        throw new Error('请求参数错误，请检查用户名和密码格式')
+      } else if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+        throw new Error('网络连接失败，请检查后端服务是否启动')
+      } else {
+        throw new Error(error.response?.data?.error || error.message || '登录失败')
+      }
     }
   }
   
@@ -606,26 +670,34 @@ class WmsAPI {
   
   /**
    * 获取库存列表
-   * GET /api/inventory/stock/
+   * GET /inventory/stock/
    */
   async getInventoryStock(params = {}) {
-    return await apiClient.get('/api/inventory/stock/', { params })
+    return await apiClient.get('/inventory/stock/', { params })
+  }
+  
+  /**
+   * 获取库存数据 (别名)
+   * GET /inventory/stock/
+   */
+  async getInventory(params = {}) {
+    return await this.getInventoryStock(params)
   }
   
   /**
    * 库存调整
-   * POST /api/inventory/stock/adjust/
+   * POST /inventory/stock/adjust/
    */
   async adjustStock(adjustData) {
-    return await apiClient.post('/api/inventory/stock/adjust/', adjustData)
+    return await apiClient.post('/inventory/stock/adjust/', adjustData)
   }
   
   /**
    * 获取库存预警
-   * GET /api/inventory/alerts/
+   * GET /inventory/alerts/
    */
   async getInventoryAlerts(params = {}) {
-    return await apiClient.get('/api/inventory/alerts/', { params })
+    return await apiClient.get('/inventory/alerts/', { params })
   }
   
   /**
@@ -638,26 +710,34 @@ class WmsAPI {
   
   /**
    * 获取库存移动记录
-   * GET /api/inventory/movements/
+   * GET /inventory/movements/
    */
   async getInventoryMovements(params = {}) {
-    return await apiClient.get('/api/inventory/movements/', { params })
+    return await apiClient.get('/inventory/movements/', { params })
   }
   
   /**
    * 获取盘点任务
-   * GET /api/inventory/count/
+   * GET /inventory/count/
    */
   async getInventoryCount(params = {}) {
-    return await apiClient.get('/api/inventory/count/', { params })
+    return await apiClient.get('/inventory/count/', { params })
+  }
+  
+  /**
+   * 获取盘点任务列表 (别名)
+   * GET /inventory/count/
+   */
+  async getInventoryCounts(params = {}) {
+    return await this.getInventoryCount(params)
   }
   
   /**
    * 创建盘点任务
-   * POST /api/inventory/count/
+   * POST /inventory/count/
    */
   async createInventoryCount(countData) {
-    return await apiClient.post('/api/inventory/count/', countData)
+    return await apiClient.post('/inventory/count/', countData)
   }
   
   // ==================== 入库管理接口 ====================
@@ -738,42 +818,42 @@ class WmsAPI {
   
   /**
    * 获取出库单列表
-   * GET /api/outbound/orders/
+   * GET /outbound/orders/
    */
   async getOutboundOrders(params = {}) {
-    return await apiClient.get('/api/outbound/orders/', { params })
+    return await apiClient.get('/outbound/orders/', { params })
   }
   
   /**
    * 创建出库单
-   * POST /api/outbound/orders/
+   * POST /outbound/orders/
    */
   async createOutboundOrder(orderData) {
-    return await apiClient.post('/api/outbound/orders/', orderData)
+    return await apiClient.post('/outbound/orders/', orderData)
   }
   
   /**
    * 更新出库单
-   * PUT /api/outbound/orders/{id}/
+   * PUT /outbound/orders/{id}/
    */
   async updateOutboundOrder(id, orderData) {
-    return await apiClient.put(`/api/outbound/orders/${id}/`, orderData)
+    return await apiClient.put(`/outbound/orders/${id}/`, orderData)
   }
   
   /**
    * 删除出库单
-   * DELETE /api/outbound/orders/{id}/
+   * DELETE /outbound/orders/{id}/
    */
   async deleteOutboundOrder(id) {
-    return await apiClient.delete(`/api/outbound/orders/${id}/`)
+    return await apiClient.delete(`/outbound/orders/${id}/`)
   }
   
   /**
    * 确认出库
-   * POST /api/outbound/orders/{id}/confirm/
+   * POST /outbound/orders/{id}/confirm/
    */
   async confirmOutbound(id) {
-    return await apiClient.post(`/api/outbound/orders/${id}/confirm/`)
+    return await apiClient.post(`/outbound/orders/${id}/confirm/`)
   }
   
   /**
@@ -785,28 +865,28 @@ class WmsAPI {
   
   /**
    * 获取出库统计
-   * GET /api/outbound/orders/stats/
+   * GET /outbound/orders/stats/
    */
   async getOutboundStats() {
-    return await apiClient.get('/api/outbound/orders/stats/')
+    return await apiClient.get('/outbound/orders/stats/')
   }
   
   /**
    * 批量开始拣货
-   * POST /api/outbound/picking/batch_start/
+   * POST /outbound/picking/batch_start/
    */
   async batchStartPicking(orderIds) {
-    return await apiClient.post('/api/outbound/picking/batch_start/', {
+    return await apiClient.post('/outbound/picking/batch_start/', {
       order_ids: orderIds
     })
   }
   
   /**
    * 批量完成拣货
-   * POST /api/outbound/picking/batch_complete/
+   * POST /outbound/picking/batch_complete/
    */
   async batchCompletePicking(orderIds) {
-    return await apiClient.post('/api/outbound/picking/batch_complete/', {
+    return await apiClient.post('/outbound/picking/batch_complete/', {
       order_ids: orderIds
     })
   }
@@ -833,26 +913,26 @@ class WmsAPI {
   
   /**
    * 开始拣货
-   * POST /api/outbound/picking/{id}/start/
+   * POST /outbound/picking/{id}/start/
    */
   async startPicking(id, pickerData) {
-    return await apiClient.post(`/api/outbound/picking/${id}/start/`, pickerData)
+    return await apiClient.post(`/outbound/picking/${id}/start/`, pickerData)
   }
   
   /**
    * 扫码确认拣货
-   * POST /api/outbound/picking/{id}/scan/
+   * POST /outbound/picking/{id}/scan/
    */
   async scanPickingItem(id, scanData) {
-    return await apiClient.post(`/api/outbound/picking/${id}/scan/`, scanData)
+    return await apiClient.post(`/outbound/picking/${id}/scan/`, scanData)
   }
   
   /**
    * 完成拣货
-   * POST /api/outbound/picking/{id}/complete/
+   * POST /outbound/picking/{id}/complete/
    */
   async completePicking(id) {
-    return await apiClient.post(`/api/outbound/picking/${id}/complete/`)
+    return await apiClient.post(`/outbound/picking/${id}/complete/`)
   }
   
   /**

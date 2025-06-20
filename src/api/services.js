@@ -153,7 +153,7 @@ export const productService = {
 export const inventoryService = {
   // 获取库存列表
   async getStock(params = {}) {
-    const response = await api.get('/api/inventory/stock/', params)
+    const response = await api.get('/inventory/stock/', params)
     return response.results || response
   },
   
@@ -219,7 +219,7 @@ export const inboundService = {
 export const outboundService = {
   // 获取出库单列表
   async getOutboundOrders(params = {}) {
-    const response = await api.get('/api/outbound/orders/', params)
+    const response = await api.get('/outbound/orders/', params)
     return response.results || response
   },
   

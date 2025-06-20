@@ -580,79 +580,79 @@ const calculateStatsFromList = () => {
 
 // 模拟数据降级处理（仅开发环境）
 const loadMockInspections = () => {
-  const mockInspections = [
-    {
-      id: 1,
-      inbound_no: 'IB2024001',
-      product_code: 'HW001',
-      product_name: '华为P50 Pro',
-      batch_number: 'B2024001',
-      quantity: 50,
-      unit: '台',
-      supplier_name: '华为技术有限公司',
-      production_date: '2024-01-01',
-      expiry_date: '2026-01-01',
-      priority: 'high',
-      status: 'pending',
-      inspector: '',
-      inspection_time: '',
-      created_at: '2024-01-15 09:00:00'
-    },
-    {
-      id: 2,
-      inbound_no: 'IB2024002',
-      product_code: 'IP001',
-      product_name: 'iPhone 14 Pro',
-      batch_number: 'B2024002',
-      quantity: 30,
-      unit: '台',
-      supplier_name: '苹果公司',
-      production_date: '2024-01-02',
-      expiry_date: '2026-01-02',
-      priority: 'medium',
-      status: 'inspecting',
-      inspector: '张三',
-      inspection_time: '',
-      created_at: '2024-01-15 10:30:00'
-    },
-    {
-      id: 3,
-      inbound_no: 'IB2024003',
-      product_code: 'XM001',
-      product_name: '小米13 Pro',
-      batch_number: 'B2024003',
-      quantity: 40,
-      unit: '台',
-      supplier_name: '小米科技',
-      production_date: '2024-01-03',
-      expiry_date: '2026-01-03',
-      priority: 'low',
-      status: 'passed',
-      inspector: '李四',
-      inspection_time: '2024-01-15 14:30:00',
-      created_at: '2024-01-15 11:00:00'
-    },
-    {
-      id: 4,
-      inbound_no: 'IB2024004',
-      product_code: 'OP001',
-      product_name: 'OPPO Find X5',
-      batch_number: 'B2024004',
-      quantity: 25,
-      unit: '台',
-      supplier_name: 'OPPO公司',
-      production_date: '2024-01-04',
-      expiry_date: '2026-01-04',
-      priority: 'high',
-      status: 'failed',
-      inspector: '王五',
-      inspection_time: '2024-01-15 15:45:00',
-      created_at: '2024-01-15 12:00:00'
-    }
-  ]
-  
-  inspectionList.value = mockInspections
-  pagination.total = mockInspections.length
+    const mockInspections = [
+      {
+        id: 1,
+        inbound_no: 'IB2024001',
+        product_code: 'HW001',
+        product_name: '华为P50 Pro',
+        batch_number: 'B2024001',
+        quantity: 50,
+        unit: '台',
+        supplier_name: '华为技术有限公司',
+        production_date: '2024-01-01',
+        expiry_date: '2026-01-01',
+        priority: 'high',
+        status: 'pending',
+        inspector: '',
+        inspection_time: '',
+        created_at: '2024-01-15 09:00:00'
+      },
+      {
+        id: 2,
+        inbound_no: 'IB2024002',
+        product_code: 'IP001',
+        product_name: 'iPhone 14 Pro',
+        batch_number: 'B2024002',
+        quantity: 30,
+        unit: '台',
+        supplier_name: '苹果公司',
+        production_date: '2024-01-02',
+        expiry_date: '2026-01-02',
+        priority: 'medium',
+        status: 'inspecting',
+        inspector: '张三',
+        inspection_time: '',
+        created_at: '2024-01-15 10:30:00'
+      },
+      {
+        id: 3,
+        inbound_no: 'IB2024003',
+        product_code: 'XM001',
+        product_name: '小米13 Pro',
+        batch_number: 'B2024003',
+        quantity: 40,
+        unit: '台',
+        supplier_name: '小米科技',
+        production_date: '2024-01-03',
+        expiry_date: '2026-01-03',
+        priority: 'low',
+        status: 'passed',
+        inspector: '李四',
+        inspection_time: '2024-01-15 14:30:00',
+        created_at: '2024-01-15 11:00:00'
+      },
+      {
+        id: 4,
+        inbound_no: 'IB2024004',
+        product_code: 'OP001',
+        product_name: 'OPPO Find X5',
+        batch_number: 'B2024004',
+        quantity: 25,
+        unit: '台',
+        supplier_name: 'OPPO公司',
+        production_date: '2024-01-04',
+        expiry_date: '2026-01-04',
+        priority: 'high',
+        status: 'failed',
+        inspector: '王五',
+        inspection_time: '2024-01-15 15:45:00',
+        created_at: '2024-01-15 12:00:00'
+      }
+    ]
+    
+    inspectionList.value = mockInspections
+    pagination.total = mockInspections.length
   calculateStatsFromList()
 }
 
@@ -722,9 +722,9 @@ const startInspection = async (inspection) => {
     console.error('开始质检失败:', error)
     ElMessage.error('开始质检失败')
     // 降级处理：直接打开对话框
-    currentInspection.value = inspection
-    resetInspectionForm()
-    inspectionDialogVisible.value = true
+  currentInspection.value = inspection
+  resetInspectionForm()
+  inspectionDialogVisible.value = true
   }
 }
 
@@ -770,20 +770,20 @@ const viewReport = async (inspection) => {
     ElMessage.error('获取质检报告失败')
     // 降级处理：使用模拟数据
     if (import.meta.env.VITE_ENABLE_LOCAL_STORAGE === 'true') {
-      currentReport.value = {
-        ...inspection,
-        details: [
-          { item: '外观检查', result: '合格', remark: '外观完好无损' },
-          { item: '功能测试', result: inspection.status === 'passed' ? '合格' : '不合格', remark: inspection.status === 'passed' ? '功能正常' : '部分功能异常' },
-          { item: '包装检查', result: '合格', remark: '包装完整' },
-          { item: '数量核验', result: '合格', remark: '数量准确' }
-        ],
-        failed_items: inspection.status === 'failed' ? ['功能异常', '规格不符'] : [],
-        failed_quantity: inspection.status === 'failed' ? 5 : 0,
-        handling_method: inspection.status === 'failed' ? 'return' : '',
-        remark: inspection.status === 'failed' ? '发现部分商品功能异常，建议退回供应商处理' : '质检通过，可以入库'
-      }
-      reportDialogVisible.value = true
+  currentReport.value = {
+    ...inspection,
+    details: [
+      { item: '外观检查', result: '合格', remark: '外观完好无损' },
+      { item: '功能测试', result: inspection.status === 'passed' ? '合格' : '不合格', remark: inspection.status === 'passed' ? '功能正常' : '部分功能异常' },
+      { item: '包装检查', result: '合格', remark: '包装完整' },
+      { item: '数量核验', result: '合格', remark: '数量准确' }
+    ],
+    failed_items: inspection.status === 'failed' ? ['功能异常', '规格不符'] : [],
+    failed_quantity: inspection.status === 'failed' ? 5 : 0,
+    handling_method: inspection.status === 'failed' ? 'return' : '',
+    remark: inspection.status === 'failed' ? '发现部分商品功能异常，建议退回供应商处理' : '质检通过，可以入库'
+  }
+  reportDialogVisible.value = true
     }
   }
 }
@@ -858,7 +858,7 @@ const printReport = async () => {
     ElMessage.success('报告已下载')
   } catch (error) {
     console.error('打印报告失败:', error)
-    ElMessage.info('打印功能开发中...')
+  ElMessage.info('打印功能开发中...')
   }
 }
 

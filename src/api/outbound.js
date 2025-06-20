@@ -6,7 +6,7 @@ const outboundApi = {
     // 获取出库订单列表
     list(params = {}) {
       return request({
-        url: '/api/outbound/orders/',
+        url: '/outbound/orders/',
         method: 'get',
         params
       })
@@ -225,7 +225,7 @@ const outboundApi = {
     // 获取拣货任务列表
     list(params = {}) {
       return request({
-        url: '/api/outbound/picking/',
+        url: '/outbound/picking/',
         method: 'get',
         params
       })

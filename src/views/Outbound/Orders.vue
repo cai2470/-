@@ -181,7 +181,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
   Download, 
@@ -389,64 +389,93 @@ const exportFromLocalStorage = () => {
   }
 }
 
+// 防抖计时器
+let tabChangeTimer = null
+
 // 标签页切换
 const handleTabChange = async (tabName) => {
   console.log('🔄 切换到标签页:', tabName)
   
-  // 等待一个微任务周期，确保组件已渲染
-  await nextTick()
-  
-  // 根据当前标签页刷新对应组件的数据
-  try {
-    switch (tabName) {
-      case 'orders':
-        if (outboundOrdersRef.value && typeof outboundOrdersRef.value.loadOrderList === 'function') {
-          console.log('🔄 刷新发货单数据')
-          await outboundOrdersRef.value.loadOrderList()
-        }
-        break
-      case 'pre_delivery':
-        if (preDeliveryRef.value && typeof preDeliveryRef.value.loadTableData === 'function') {
-          console.log('🔄 刷新预发货数据')
-          await preDeliveryRef.value.loadTableData()
-        }
-        break
-      case 'picking':
-        if (pickingGoodsRef.value && typeof pickingGoodsRef.value.loadTableData === 'function') {
-          console.log('🔄 刷新拣货数据')
-          await pickingGoodsRef.value.loadTableData()
-        }
-        break
-      case 'packing':
-        if (packingGoodsRef.value && typeof packingGoodsRef.value.loadTableData === 'function') {
-          console.log('🔄 刷新打包数据')
-          await packingGoodsRef.value.loadTableData()
-        }
-        break
-      case 'shipping':
-        if (shippingGoodsRef.value && typeof shippingGoodsRef.value.loadTableData === 'function') {
-          console.log('🔄 刷新发货数据')
-          await shippingGoodsRef.value.loadTableData()
-        }
-        break
-    }
-    
-    // 同时刷新统计数据
-    await loadStats()
-    
-    console.log('✅ 标签页切换完成，数据已刷新')
-  } catch (error) {
-    console.error('标签页切换刷新失败:', error)
+  // 🔧 防抖处理：避免快速切换标签页时的重复请求
+  if (tabChangeTimer) {
+    clearTimeout(tabChangeTimer)
   }
+  
+  tabChangeTimer = setTimeout(async () => {
+    // 等待一个微任务周期，确保组件已渲染
+    await nextTick()
+    
+    // 根据当前标签页刷新对应组件的数据
+    try {
+      switch (tabName) {
+        case 'orders':
+          if (outboundOrdersRef.value && typeof outboundOrdersRef.value.loadOrderList === 'function') {
+            console.log('🔄 刷新发货单数据')
+            await outboundOrdersRef.value.loadOrderList()
+          }
+          break
+        case 'pre_delivery':
+          if (preDeliveryRef.value && typeof preDeliveryRef.value.loadTableData === 'function') {
+            console.log('🔄 刷新预发货数据')
+            await preDeliveryRef.value.loadTableData()
+          }
+          break
+        case 'picking':
+          if (pickingGoodsRef.value && typeof pickingGoodsRef.value.loadTableData === 'function') {
+            console.log('🔄 刷新拣货数据')
+            await pickingGoodsRef.value.loadTableData()
+          }
+          break
+        case 'packing':
+          if (packingGoodsRef.value && typeof packingGoodsRef.value.loadTableData === 'function') {
+            console.log('🔄 刷新打包数据')
+            await packingGoodsRef.value.loadTableData()
+          }
+          break
+        case 'shipping':
+          if (shippingGoodsRef.value && typeof shippingGoodsRef.value.loadTableData === 'function') {
+            console.log('🔄 刷新发货数据')
+            await shippingGoodsRef.value.loadTableData()
+          }
+          break
+      }
+      
+      // 🔧 移除统计数据的重复刷新，因为定时器已经在处理
+      // await loadStats()
+      
+      console.log('✅ 标签页切换完成，数据已刷新')
+    } catch (error) {
+      console.error('标签页切换刷新失败:', error)
+    }
+  }, 300) // 300ms防抖延迟
 }
+
+// 定时器引用
+let statsTimer = null
 
 onMounted(async () => {
   await loadStats()
   
-  // 每30秒自动刷新统计数据
-  setInterval(() => {
+  // 🔧 修复无限加载：将定时器间隔改为5分钟，并添加清理机制
+  statsTimer = setInterval(() => {
+    console.log('🔄 定时刷新统计数据 (5分钟)')
     loadStats()
-  }, 30000)
+  }, 5 * 60 * 1000) // 5分钟
+})
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (statsTimer) {
+    clearInterval(statsTimer)
+    statsTimer = null
+    console.log('🧹 统计数据定时器已清理')
+  }
+  
+  if (tabChangeTimer) {
+    clearTimeout(tabChangeTimer)
+    tabChangeTimer = null
+    console.log('🧹 标签页切换定时器已清理')
+  }
 })
 </script>
 

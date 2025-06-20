@@ -678,8 +678,25 @@ const handleAPIFallback = (error, operation) => {
 // 加载基础数据
 const loadBasicData = async () => {
   try {
-    // 加载仓库列表
-    warehouses.value = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+    // 加载仓库列表 - 数据验证和清理
+    let warehousesData = JSON.parse(localStorage.getItem('wms_warehouses') || '[]')
+    
+    // 验证仓库数据结构
+    if (!Array.isArray(warehousesData)) {
+      console.warn('仓库数据不是数组格式，使用默认数据')
+      warehousesData = []
+    }
+    
+    // 过滤和验证每个仓库对象
+    warehouses.value = warehousesData
+      .filter(w => w && typeof w === 'object' && w.id && w.name)
+      .map(w => ({
+        id: w.id,
+        name: w.name || '未知仓库',
+        code: w.code || `WH${w.id.toString().padStart(3, '0')}`
+      }))
+    
+    // 如果没有有效仓库数据，使用默认数据
     if (warehouses.value.length === 0) {
       warehouses.value = [
         { id: 1, name: '主仓库', code: 'WH001' },
@@ -688,8 +705,26 @@ const loadBasicData = async () => {
       ]
     }
 
-    // 加载库区列表
-    zones.value = JSON.parse(localStorage.getItem('wms_zones') || '[]')
+    // 加载库区列表 - 数据验证和清理
+    let zonesData = JSON.parse(localStorage.getItem('wms_zones') || '[]')
+    
+    // 验证库区数据结构
+    if (!Array.isArray(zonesData)) {
+      console.warn('库区数据不是数组格式，使用默认数据')
+      zonesData = []
+    }
+    
+    // 过滤和验证每个库区对象
+    zones.value = zonesData
+      .filter(z => z && typeof z === 'object' && z.id && z.name && z.warehouse_id)
+      .map(z => ({
+        id: z.id,
+        warehouse_id: z.warehouse_id,
+        name: z.name || '未知库区',
+        code: z.code || `Z${z.id.toString().padStart(3, '0')}`
+      }))
+    
+    // 如果没有有效库区数据，使用默认数据
     if (zones.value.length === 0) {
       zones.value = [
         { id: 1, warehouse_id: 1, name: 'A区', code: 'A' },
@@ -698,8 +733,26 @@ const loadBasicData = async () => {
         { id: 4, warehouse_id: 3, name: 'A区', code: 'A' }
       ]
     }
+    
+    console.log('✅ 基础数据加载完成:', {
+      warehouses: warehouses.value.length,
+      zones: zones.value.length
+    })
+    
   } catch (error) {
-    console.error('加载基础数据失败:', error)
+    console.error('❌ 加载基础数据失败:', error)
+    // 出错时使用默认数据
+    warehouses.value = [
+      { id: 1, name: '主仓库', code: 'WH001' },
+      { id: 2, name: '北京仓库', code: 'WH002' },
+      { id: 3, name: '上海仓库', code: 'WH003' }
+    ]
+    zones.value = [
+      { id: 1, warehouse_id: 1, name: 'A区', code: 'A' },
+      { id: 2, warehouse_id: 1, name: 'B区', code: 'B' },
+      { id: 3, warehouse_id: 2, name: 'A区', code: 'A' },
+      { id: 4, warehouse_id: 3, name: 'A区', code: 'A' }
+    ]
   }
 }
 

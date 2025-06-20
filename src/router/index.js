@@ -265,7 +265,7 @@ router.beforeEach(async (to, from, next) => {
   // 不需要认证的页面（如登录页）
   if (to.meta.requireAuth === false) {
     // 如果已登录用户访问登录页，重定向到首页
-    const token = localStorage.getItem('access_token')
+    const token = localStorage.getItem('wms_access_token')
     if (token && to.path === '/login') {
       next('/dashboard')
       return
@@ -275,14 +275,16 @@ router.beforeEach(async (to, from, next) => {
   }
   
   // 需要认证的页面
-  const token = localStorage.getItem('access_token')
+  const token = localStorage.getItem('wms_access_token')
   if (!token) {
     // 未登录，重定向到登录页
+    console.log('🔒 未检测到认证Token，重定向到登录页')
     next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
   
   // 已登录，允许访问
+  console.log('✅ 认证Token有效，允许访问:', to.path)
   next()
 })
 

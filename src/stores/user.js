@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authAPI } from '@/api/request'
+import { wmsAPI } from '@/utils/api'
 import { ElMessage } from 'element-plus'
 
 export const useUserStore = defineStore('user', () => {
@@ -17,7 +17,7 @@ export const useUserStore = defineStore('user', () => {
 
   // 获取存储的token
   const getStoredToken = () => {
-    return localStorage.getItem('access_token')
+    return localStorage.getItem('wms_access_token')
   }
 
   // 设置用户信息
@@ -25,7 +25,7 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = info
     isLoggedIn.value = true
     // 同时存储到localStorage作为备份
-    localStorage.setItem('user_info', JSON.stringify(info))
+    localStorage.setItem('wms_user_info', JSON.stringify(info))
   }
 
   // 设置权限
@@ -41,137 +41,100 @@ export const useUserStore = defineStore('user', () => {
   // 登录
   const login = async (loginData) => {
     try {
-      // 尝试调用真实API
-      const response = await authAPI.login(loginData)
+      console.log('🔄 用户store开始登录流程...')
       
-      if (response && response.access) {
-        // 存储tokens
-        localStorage.setItem('access_token', response.access)
-        if (response.refresh) {
-          localStorage.setItem('refresh_token', response.refresh)
-        }
+      // 使用wmsAPI进行登录（已包含API和降级逻辑）
+      const response = await wmsAPI.login(loginData)
+      
+      if (response && response.success) {
+        console.log('✅ API登录成功:', response)
         
         // 设置用户信息
         if (response.user) {
           setUserInfo(response.user)
+        } else {
+          // 如果登录响应中没有用户信息，尝试获取
+          try {
+            const userInfoData = await wmsAPI.getCurrentUser()
+            if (userInfoData) {
+              setUserInfo(userInfoData)
+            }
+          } catch (error) {
+            console.warn('获取用户信息失败，使用基础信息:', error)
+            setUserInfo({
+              username: loginData.username,
+              role: '用户'
+            })
+          }
         }
         
-        // 获取用户详细信息
-        await getUserInfo()
+        // 设置基础权限
+        const userRole = response.user?.role || '用户'
+        setRoles([userRole])
+        
+        // 根据角色设置权限
+        const rolePermissions = getRolePermissions(userRole)
+        setPermissions(rolePermissions)
         
         ElMessage.success('登录成功')
         return { success: true, data: response }
+      } else {
+        throw new Error('登录响应异常')
       }
+      
     } catch (error) {
-      // 如果API不可用，使用演示模式
-      console.warn('API不可用，使用演示模式登录:', error.message)
-        return await loginDemo(loginData)
+      console.error('❌ 登录失败:', error)
+      ElMessage.error(error.message || '登录失败，请检查用户名和密码')
+      throw error
     }
   }
 
-  // 演示模式登录（仅用于开发和演示）
-  const loginDemo = async (loginData) => {
-    const { username, password } = loginData
-    
-    // 预设的演示账号
-    const demoAccounts = [
-      {
-        username: 'admin',
-        password: 'admin123',
-        user: {
-          id: 1,
-          username: 'admin',
-          email: 'admin@xiaoshenlong.com',
-          role: '超级管理员',
-          avatar: '',
-          department: '系统管理部',
-          phone: '13800138000'
-        }
-      },
-      {
-        username: 'manager',
-        password: 'manager123',
-        user: {
-          id: 2,
-          username: 'manager',
-          email: 'manager@xiaoshenlong.com',
-          role: '仓库管理员',
-          avatar: '',
-          department: '仓储部',
-          phone: '13800138001'
-        }
-      },
-      {
-        username: 'operator',
-        password: 'operator123',
-        user: {
-          id: 3,
-          username: 'operator',
-          email: 'operator@xiaoshenlong.com',
-          role: '操作员',
-          avatar: '',
-          department: '操作部',
-          phone: '13800138002'
-        }
-      },
-      {
-        username: 'testuser',
-        password: '123456',
-        user: {
-          id: 4,
-          username: 'testuser',
-          email: 'test@xiaoshenlong.com',
-          role: '测试用户',
-          avatar: '',
-          department: '测试部',
-          phone: '13800138003'
-        }
-      }
-    ]
-    
-    const account = demoAccounts.find(acc => 
-      acc.username === username && acc.password === password
-    )
-    
-    if (account) {
-      // 生成演示token
-      const demoToken = `demo_token_${account.user.id}_${Date.now()}`
-      
-      localStorage.setItem('access_token', demoToken)
-      localStorage.setItem('demo_mode', 'true')
-      
-      setUserInfo(account.user)
-      
-      // 设置演示权限
-      const demoPermissions = account.user.role === '超级管理员' 
-        ? ['*'] // 超级管理员拥有所有权限
-        : ['warehouse:read', 'inventory:read', 'products:read']
-      
-      setPermissions(demoPermissions)
-      setRoles([account.user.role])
-      
-      ElMessage.success(`演示模式登录成功 - ${account.user.role}`)
-      return { success: true, data: { user: account.user, demo: true } }
-    } else {
-      throw new Error('用户名或密码错误')
+  // 根据角色获取权限
+  const getRolePermissions = (role) => {
+    const permissionMap = {
+      '超级管理员': ['*'], // 所有权限
+      '系统管理员': ['*'],
+      '管理员': ['*'],
+      '仓库管理员': [
+        'warehouse:read', 'warehouse:write',
+        'inventory:read', 'inventory:write',
+        'products:read', 'products:write',
+        'inbound:read', 'inbound:write',
+        'outbound:read', 'outbound:write',
+        'reports:read'
+      ],
+      '仓库经理': [
+        'warehouse:read', 'warehouse:write',
+        'inventory:read', 'inventory:write',
+        'products:read', 'products:write',
+        'inbound:read', 'inbound:write',
+        'outbound:read', 'outbound:write',
+        'reports:read'
+      ],
+      '操作员': [
+        'warehouse:read',
+        'inventory:read', 'inventory:write',
+        'products:read',
+        'inbound:read', 'inbound:write',
+        'outbound:read', 'outbound:write'
+      ],
+      '测试用户': [
+        'warehouse:read',
+        'inventory:read',
+        'products:read'
+      ]
     }
+    
+    return permissionMap[role] || ['basic:read']
   }
 
   // 登出
   const logout = async () => {
     try {
-      const refreshToken = localStorage.getItem('refresh_token')
-      
-      // 如果不是演示模式，调用API登出
-      if (!localStorage.getItem('demo_mode') && refreshToken) {
-        try {
-          await authAPI.logout(refreshToken)
-        } catch (error) {
-          console.warn('API登出失败，继续本地登出', error)
-        }
-      }
+      // 尝试调用API登出
+      await wmsAPI.logout()
     } catch (error) {
-      console.warn('登出API调用失败', error)
+      console.warn('API登出失败，继续本地登出:', error)
     } finally {
       // 清除所有状态和存储
       clearUserState()
@@ -186,46 +149,31 @@ export const useUserStore = defineStore('user', () => {
     roles.value = []
     isLoggedIn.value = false
     
-    // 清除存储
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('user_info')
-    localStorage.removeItem('demo_mode')
+    // 清除wmsAPI相关存储
+    wmsAPI.clearAuthData()
   }
 
   // 获取用户信息
   const getUserInfo = async () => {
     try {
-      // 如果是演示模式，从localStorage获取
-      if (localStorage.getItem('demo_mode')) {
-        const stored = localStorage.getItem('user_info')
-        if (stored) {
-          const info = JSON.parse(stored)
-          setUserInfo(info)
-          isLoggedIn.value = true
-          return info
-        }
-        return null
-      }
-      
-      // 调用API获取用户信息
-      const userInfoData = await authAPI.getUserInfo()
+      // 调用wmsAPI获取用户信息
+      const userInfoData = await wmsAPI.getCurrentUser()
       if (userInfoData) {
         setUserInfo(userInfoData)
         return userInfoData
       }
     } catch (error) {
-      console.warn('获取用户信息失败', error)
+      console.warn('获取用户信息失败:', error)
       
       // 如果API失败，尝试从localStorage恢复
-      const stored = localStorage.getItem('user_info')
+      const stored = localStorage.getItem('wms_user_info')
       if (stored) {
         try {
           const info = JSON.parse(stored)
           setUserInfo(info)
           return info
         } catch (parseError) {
-          console.error('解析存储的用户信息失败', parseError)
+          console.error('解析存储的用户信息失败:', parseError)
         }
       }
       
@@ -236,25 +184,20 @@ export const useUserStore = defineStore('user', () => {
   // 更新用户信息
   const updateUserInfo = async (data) => {
     try {
-      // 如果不是演示模式，调用API更新
-      if (!localStorage.getItem('demo_mode')) {
-        const updated = await authAPI.updateUserInfo(data)
-        if (updated) {
-          setUserInfo({ ...userInfo.value, ...updated })
-          ElMessage.success('用户信息更新成功')
-          return updated
-        }
-      } else {
-        // 演示模式下直接更新本地数据
-        const updated = { ...userInfo.value, ...data }
-        setUserInfo(updated)
-        ElMessage.success('用户信息更新成功（演示模式）')
+      // 调用API更新用户信息
+      const updated = await wmsAPI.updateUser(userInfo.value.id, data)
+      if (updated) {
+        setUserInfo({ ...userInfo.value, ...updated })
+        ElMessage.success('用户信息更新成功')
         return updated
       }
     } catch (error) {
-      const message = error.message || '更新用户信息失败'
-      ElMessage.error(message)
-      throw error
+      console.warn('API更新失败，仅更新本地数据:', error)
+      // 本地更新
+      const updated = { ...userInfo.value, ...data }
+      setUserInfo(updated)
+      ElMessage.success('用户信息更新成功（本地）')
+      return updated
     }
   }
 

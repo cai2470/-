@@ -6,7 +6,7 @@ const inventoryApi = {
     // 获取库存列表
     list(params = {}) {
       return request({
-        url: '/api/inventory/stock/',
+        url: '/inventory/stock/',
         method: 'get',
         params
       })
@@ -127,7 +127,7 @@ const inventoryApi = {
     // 获取预警列表
     list(params = {}) {
       return request({
-        url: '/api/inventory/alerts/',
+        url: '/inventory/alerts/',
         method: 'get',
         params
       })
@@ -183,7 +183,7 @@ const inventoryApi = {
     // 获取盘点任务列表
     list(params = {}) {
       return request({
-        url: '/api/inventory/count/',
+        url: '/inventory/count/',
         method: 'get',
         params
       })
